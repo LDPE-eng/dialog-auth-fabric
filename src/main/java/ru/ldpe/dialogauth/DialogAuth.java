@@ -1,5 +1,6 @@
 package ru.ldpe.dialogauth;
 
+import java.nio.file.Path;
 import java.util.concurrent.CompletableFuture;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.ModInitializer;
@@ -15,6 +16,10 @@ public final class DialogAuth implements ModInitializer {
     private static boolean onlineMode;
     private static boolean encryptedOffline;
     private static DialogAuthIdentity identity;
+    private static String clientDownloadUrl = "";
+    private static String clientKitPath = "client-kit";
+    private static String clientModpackManifestUrl = "";
+    private static String clientModpackServers = "";
 
     @Override
     public void onInitialize() {
@@ -27,10 +32,15 @@ public final class DialogAuth implements ModInitializer {
                     configDirectory.resolve("config.properties"));
             onlineMode = config.onlineMode();
             encryptedOffline = !config.onlineMode() && config.allowOfflineMode() && config.requireEncryptedAuth();
+            clientDownloadUrl = config.clientDownloadUrl();
+            clientKitPath = config.clientKitPath();
+            clientModpackManifestUrl = config.clientModpackManifestUrl();
+            clientModpackServers = config.clientModpackServers();
             if (encryptedOffline) identity = new DialogAuthIdentity(configDirectory);
         } catch (Exception e) {
             throw new IllegalStateException("Could not load Dialog Auth configuration", e);
         }
+        generateClientKit();
         AccountStore store = new AccountStore(configDirectory.resolve("accounts.json"));
         service = new AuthService(store, new RateLimiter(System::nanoTime, 16384), 2, 32,
                 exception -> LOGGER.error("Authentication storage failure", exception),
@@ -67,6 +77,22 @@ public final class DialogAuth implements ModInitializer {
                 config.onlineMode());
     }
 
+    private static void generateClientKit() {
+        if (clientKitPath.isBlank()) {
+            LOGGER.info("Dialog Auth client kit generation is disabled (client-kit-path is empty)");
+            return;
+        }
+        try {
+            Path directory = Path.of(clientKitPath);
+            if (!directory.isAbsolute()) directory = FabricLoader.getInstance().getGameDir().resolve(directory);
+            Path output = directory.resolve("dialog-auth-client.zip");
+            ClientKitGenerator.generateFromFabric(output, clientModpackManifestUrl, clientModpackServers);
+            LOGGER.info("Dialog Auth client kit written to {}", output);
+        } catch (Exception e) {
+            LOGGER.error("Could not generate the Dialog Auth client kit", e);
+        }
+    }
+
     private static void registerNetworkHandlers() {
         ServerConfigurationNetworking.registerGlobalReceiver(DialogAuthPayloads.ClientHelloPayload.ID, (payload, context) -> {
             if (((ServerConfigurationNetworkHandlerAccessorMixin) context.networkHandler()).dialogauth$getCurrentTask()
@@ -89,6 +115,7 @@ public final class DialogAuth implements ModInitializer {
 
     public static boolean isOnlineMode() { return onlineMode; }
     public static boolean offlineEncryptionRequired() { return encryptedOffline; }
+    public static String clientDownloadUrl() { return clientDownloadUrl; }
     public static DialogAuthIdentity identity() {
         if (identity == null) throw new IllegalStateException("Dialog Auth server identity is not initialized");
         return identity;

@@ -1,18 +1,27 @@
 package ru.ldpe.dialogauth.client;
 
+import com.google.gson.Gson;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Map;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
 
 public final class ModpackInstaller {
+    private static final Gson GSON = new Gson();
+
     private ModpackInstaller() {}
 
     public static List<String> sync(ModpackManifest manifest, URI manifestUri, Path modsDirectory, HttpClient http) throws IOException {
@@ -38,6 +47,7 @@ public final class ModpackInstaller {
         if (pending.isEmpty()) return List.of();
         Path backup = modsDirectory.resolve(".dialogauth-backup").resolve(Instant.now().toString().replace(':', '-'));
         List<String> changed = new ArrayList<>();
+        removeStaleVersions(manifest, modsDirectory, backup, changed);
         for (Pending item : pending) {
             if (Files.exists(item.target())) {
                 Files.createDirectories(backup);
@@ -47,6 +57,46 @@ public final class ModpackInstaller {
             changed.add(item.target().getFileName().toString());
         }
         return List.copyOf(changed);
+    }
+
+    private static void removeStaleVersions(ModpackManifest manifest, Path modsDirectory, Path backup,
+                                            List<String> changed) throws IOException {
+        Map<String, String> desiredFileById = new HashMap<>();
+        for (ModpackManifest.Mod mod : manifest.mods()) {
+            desiredFileById.put(mod.id(), mod.file());
+        }
+        List<Path> jars = new ArrayList<>();
+        try (var paths = Files.list(modsDirectory)) {
+            for (Path path : paths.toList()) {
+                if (Files.isRegularFile(path) && path.getFileName().toString().endsWith(".jar")) {
+                    jars.add(path);
+                }
+            }
+        }
+        for (Path jar : jars) {
+            String fileName = jar.getFileName().toString();
+            String id = readModId(jar);
+            if (id == null) continue;
+            String desired = desiredFileById.get(id);
+            if (desired == null || desired.equals(fileName)) continue;
+            Files.createDirectories(backup);
+            Files.move(jar, backup.resolve(fileName), StandardCopyOption.REPLACE_EXISTING);
+            changed.add(fileName);
+        }
+    }
+
+    private static String readModId(Path jar) {
+        try (ZipFile zip = new ZipFile(jar.toFile())) {
+            ZipEntry entry = zip.getEntry("fabric.mod.json");
+            if (entry == null) return null;
+            try (InputStream input = zip.getInputStream(entry)) {
+                String json = new String(input.readAllBytes(), StandardCharsets.UTF_8);
+                ModInfo info = GSON.fromJson(json, ModInfo.class);
+                return info == null || info.id == null ? null : info.id;
+            }
+        } catch (IOException | RuntimeException e) {
+            return null;
+        }
     }
 
     public static String hash(Path file) throws IOException {
@@ -61,5 +111,6 @@ public final class ModpackInstaller {
         }
     }
 
+    private record ModInfo(String id) {}
     private record Pending(String name, Path downloaded, Path target) {}
 }

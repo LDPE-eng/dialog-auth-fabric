@@ -82,7 +82,7 @@ public final class AuthTask implements ServerPlayerConfigurationTask {
             if (DialogAuth.offlineEncryptionRequired()) {
                 session.start(false);
                 if (!ServerConfigurationNetworking.canSend(handler, DialogAuthPayloads.ChallengePayload.ID)) {
-                    disconnect("Для этого сервера нужен Dialog Auth companion-мод и Fabric API.");
+                    disconnect(withDownloadLink("Для этого сервера нужен Dialog Auth companion-мод и Fabric API."));
                     return;
                 }
                 challengeId = UUID.randomUUID();
@@ -130,9 +130,15 @@ public final class AuthTask implements ServerPlayerConfigurationTask {
         connection.tryDisableAutoRead();
     }
 
+    private static String withDownloadLink(String message) {
+        String url = DialogAuth.clientDownloadUrl();
+        if (url.isBlank()) return message;
+        return message + " Скачать клиент: " + url;
+    }
+
     public void handleResponse(NbtCompound response) {
         if (DialogAuth.offlineEncryptionRequired()) {
-            disconnect("Незашифрованный пароль запрещён. Установите Dialog Auth companion-мод.");
+            disconnect(withDownloadLink("Незашифрованный пароль запрещён. Установите Dialog Auth companion-мод."));
             return;
         }
         if (session != null) {

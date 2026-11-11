@@ -1,6 +1,7 @@
 import argparse
 import base64
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
@@ -12,6 +13,7 @@ import tempfile
 import threading
 import time
 import uuid
+import zipfile
 
 
 def varint(value):
@@ -213,18 +215,113 @@ def prepare_online_account(directory):
     }))
 
 
-def run_server(args, directory, allow_offline, scenario):
+def read_mod_version(jar):
+    with zipfile.ZipFile(jar) as archive:
+        with archive.open("fabric.mod.json") as raw:
+            metadata = json.loads(raw.read())
+    return metadata["version"]
+
+
+def find_client_kit_zip(kit_path):
+    stable = kit_path / "dialog-auth-client.zip"
+    if stable.is_file():
+        return stable
+    if kit_path.is_file():
+        return kit_path
+    return None
+
+
+def parse_properties(text):
+    result = {}
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or line.startswith("!"):
+            continue
+        key, separator, value = line.partition("=")
+        if not separator:
+            continue
+        result[key.strip()] = value.strip()
+    return result
+
+
+def client_kit_scenario(port, directory, download_url, kit_path, version, fabric_version,
+                        server_jar, fabric_api_jar, modpack_url, modpack_servers):
+    vanilla = Client(port, "NoCompanion", expect_disconnect=True)
+    assert vanilla.disconnection is not None, "Vanilla offline client was not disconnected"
+    assert download_url.encode() in vanilla.disconnection, \
+        ("Disconnect does not advertise client-download-url", vanilla.disconnection)
+    vanilla.close()
+
+    archive_path = find_client_kit_zip(kit_path)
+    assert archive_path is not None, f"client kit zip was not created at {kit_path}"
+    required = {
+        f"mods/dialog-auth-{version}.jar",
+        f"mods/dialog-auth-companion-{version}.jar",
+        f"mods/fabric-api-{fabric_version}.jar",
+        "INSTALL.txt",
+        "config/dialogauth/modpack.properties",
+    }
+    allowed_client_config = {"config/dialogauth/modpack.properties"}
+    with zipfile.ZipFile(archive_path) as archive:
+        names = set(archive.namelist())
+        missing = required - names
+        assert not missing, ("client kit zip is missing entries", sorted(missing), sorted(names))
+        forbidden = []
+        for name in names:
+            lower = name.lower()
+            top = name.split("/")[0]
+            if name in allowed_client_config:
+                continue
+            if (lower.endswith("accounts.json") or lower.endswith(".key") or lower.endswith(".pem")
+                    or "private" in lower):
+                forbidden.append(name)
+            elif top in ("config", "world", "worlds"):
+                forbidden.append(name)
+        assert not forbidden, ("client kit zip contains forbidden entries", forbidden)
+        for name in required:
+            assert archive.getinfo(name).file_size > 0, ("client kit zip entry is empty", name)
+        install_bytes = archive.read("INSTALL.txt")
+        try:
+            install = install_bytes.decode("utf-8")
+        except UnicodeDecodeError:
+            install = install_bytes.decode("cp1251", errors="replace")
+        assert any("\u0400" <= char <= "\u04ff" for char in install), "INSTALL.txt is not in Russian"
+        assert "prism" in install.lower(), "INSTALL.txt does not mention Prism"
+        migration_markers = ("1.3.0", "удал", "dialog-auth-1.3.0.jar", "dialog-auth-companion-1.3.0.jar")
+        assert all(marker in install for marker in migration_markers), \
+            ("INSTALL.txt lacks the 1.3.0 migration warning", install)
+        modpack = parse_properties(archive.read("config/dialogauth/modpack.properties").decode("utf-8"))
+        assert modpack == {"url": modpack_url, "servers": modpack_servers}, \
+            ("client kit modpack.properties has unexpected content", modpack)
+        assert archive.read(f"mods/dialog-auth-{version}.jar") == Path(server_jar).read_bytes(), \
+            "client kit server jar differs from production JAR"
+        assert archive.read(f"mods/fabric-api-{fabric_version}.jar") == Path(fabric_api_jar).read_bytes(), \
+            "client kit Fabric API differs from installed Fabric API"
+        with zipfile.ZipFile(io.BytesIO(archive.read(f"mods/dialog-auth-companion-{version}.jar"))) as companion:
+            with companion.open("fabric.mod.json") as raw:
+                companion_metadata = json.loads(raw.read())
+        assert companion_metadata["id"] == "dialogauth-companion", \
+            "client kit companion jar has the wrong mod id"
+    print("PASS: offline no-companion disconnect advertises client kit and server-generated zip")
+
+
+def write_config(directory, config):
+    if config is None:
+        return
+    target = directory / "config/dialogauth"
+    target.mkdir(parents=True, exist_ok=True)
+    lines = [f"{key}={value}\n" for key, value in config.items()]
+    (target / "config.properties").write_text("".join(lines))
+
+
+def run_server(args, directory, config, scenario):
     directory.mkdir(parents=True, exist_ok=True)
     (directory / "mods").mkdir()
-    shutil.copy2(args.mod, directory / "mods/dialog-auth.jar")
-    shutil.copy2(args.fabric_api, directory / "mods/fabric-api.jar")
+    shutil.copy2(args.mod, directory / "mods" / args.mod.name)
+    shutil.copy2(args.fabric_api, directory / "mods" / args.fabric_api.name)
     shutil.copy2(args.minecraft_server, directory / "server.jar")
     (directory / "eula.txt").write_text("eula=true\n")
-    if allow_offline is not None:
-        config = directory / "config/dialogauth"
-        config.mkdir(parents=True, exist_ok=True)
-        (config / "config.properties").write_text(
-            f"allow-offline-mode={str(allow_offline).lower()}\nrequire-encrypted-auth=false\n")
+    write_config(directory, config)
     with socket.socket() as available:
         available.bind(("127.0.0.1", 0))
         port = available.getsockname()[1]
@@ -276,6 +373,8 @@ def main():
     parser.add_argument("--fabric-api", type=Path, required=True)
     parser.add_argument("--accept-test-eula", action="store_true", required=True)
     args = parser.parse_args()
+    version = read_mod_version(args.mod)
+    fabric_version = read_mod_version(args.fabric_api)
     root = Path(__file__).resolve().parents[3]
     (root / "build").mkdir(exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="protocol-smoke-", dir=root / "build") as temporary:
@@ -286,10 +385,30 @@ def main():
         allowed_directory = root_directory / "allowed"
         allowed_directory.mkdir()
         prepare_online_account(allowed_directory)
-        allowed_logs = run_server(args, allowed_directory, True, allowed_scenarios)
+        allowed_logs = run_server(args, allowed_directory,
+                                  {"allow-offline-mode": "true", "require-encrypted-auth": "false"},
+                                  allowed_scenarios)
         assert "Microsoft does not verify usernames" in allowed_logs
         assert "dialog passwords travel unencrypted" in allowed_logs
         assert "unregistered name can be claimed" in allowed_logs
+
+        kit_directory = root_directory / "kit"
+        kit_directory.mkdir()
+        download_url = "https://example.com/dialog-auth-client.zip"
+        modpack_url = "https://example.com/modpack/manifest.json"
+        modpack_servers = "example.com:25565"
+        kit_path = (kit_directory / "client-kit").resolve()
+        kit_logs = run_server(args, kit_directory, {
+            "allow-offline-mode": "true",
+            "require-encrypted-auth": "true",
+            "client-download-url": download_url,
+            "client-kit-path": str(kit_path),
+            "client-modpack-manifest-url": modpack_url,
+            "client-modpack-servers": modpack_servers,
+        }, lambda port, directory: client_kit_scenario(
+            port, directory, download_url, kit_path, version, fabric_version,
+            args.mod, args.fabric_api, modpack_url, modpack_servers))
+        assert "Dialog Auth initialized" in kit_logs
 
 
 if __name__ == "__main__":

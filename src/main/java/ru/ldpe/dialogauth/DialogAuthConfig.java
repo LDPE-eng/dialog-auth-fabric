@@ -8,7 +8,9 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.Properties;
 
-public record DialogAuthConfig(boolean onlineMode, boolean allowOfflineMode, boolean requireEncryptedAuth) {
+public record DialogAuthConfig(boolean onlineMode, boolean allowOfflineMode, boolean requireEncryptedAuth,
+                               String clientDownloadUrl, String clientKitPath,
+                               String clientModpackManifestUrl, String clientModpackServers) {
     private static final String DEFAULT_CONFIG = """
             # Dialog Auth offline-client support is disabled by default (fail closed).
             # WARNING: with online-mode=false and allow-offline-mode=true, Microsoft does not
@@ -17,6 +19,16 @@ public record DialogAuthConfig(boolean onlineMode, boolean allowOfflineMode, boo
             allow-offline-mode=false
             # Require the companion mod and encrypted password responses in offline mode.
             require-encrypted-auth=true
+            # Download link shown to players who join without the companion mod.
+            # Leave empty to hide the link.
+            client-download-url=
+            # Directory where dialog-auth-client.zip is written at startup.
+            # Relative paths are resolved against the server directory.
+            client-kit-path=client-kit
+            # Optional public modpack sync settings. If both are set, the generated
+            # dialog-auth-client.zip includes config/dialogauth/modpack.properties.
+            client-modpack-manifest-url=
+            client-modpack-servers=
             """;
 
     public static DialogAuthConfig load(Path serverProperties, Path configFile) throws IOException {
@@ -30,21 +42,35 @@ public record DialogAuthConfig(boolean onlineMode, boolean allowOfflineMode, boo
             }
         }
         return new DialogAuthConfig(onlineMode, readBoolean(configFile, "allow-offline-mode", false),
-                readBoolean(configFile, "require-encrypted-auth", true));
+                readBoolean(configFile, "require-encrypted-auth", true),
+                readString(configFile, "client-download-url", ""),
+                readString(configFile, "client-kit-path", "client-kit"),
+                readString(configFile, "client-modpack-manifest-url", ""),
+                readString(configFile, "client-modpack-servers", ""));
     }
 
-    private static boolean readBoolean(Path file, String key, boolean defaultValue) throws IOException {
-        if (!Files.exists(file)) return defaultValue;
+    private static Properties properties(Path file) throws IOException {
+        if (!Files.exists(file)) return new Properties();
         Properties properties = new Properties();
         try (InputStream input = Files.newInputStream(file)) {
             properties.load(input);
         } catch (IllegalArgumentException e) {
             throw new IOException("Invalid properties file: " + file, e);
         }
-        String value = properties.getProperty(key);
+        return properties;
+    }
+
+    private static boolean readBoolean(Path file, String key, boolean defaultValue) throws IOException {
+        String value = properties(file).getProperty(key);
         if (value == null) return defaultValue;
         if (value.equalsIgnoreCase("true")) return true;
         if (value.equalsIgnoreCase("false")) return false;
         throw new IOException("Property " + key + " must be true or false in " + file);
+    }
+
+    private static String readString(Path file, String key, String defaultValue) throws IOException {
+        String value = properties(file).getProperty(key);
+        if (value == null) return defaultValue;
+        return value.trim();
     }
 }
