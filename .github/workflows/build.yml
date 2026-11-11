@@ -19,12 +19,12 @@ jobs:
       - name: Upload server artifact
         uses: actions/upload-artifact@v4
         with:
-          name: dialog-auth-server-1.3.0-mc1.21.6
-          path: build/libs/dialog-auth-1.3.0.jar
+          name: dialog-auth-server-1.4.0-mc1.21.6
+          path: build/libs/dialog-auth-1.4.0.jar
           if-no-files-found: error
       - name: Upload companion artifact
         uses: actions/upload-artifact@v4
         with:
-          name: dialog-auth-companion-1.3.0-mc1.21.6
-          path: build/libs/dialog-auth-companion-1.3.0.jar
+          name: dialog-auth-companion-1.4.0-mc1.21.6
+          path: build/libs/dialog-auth-companion-1.4.0.jar
           if-no-files-found: error
