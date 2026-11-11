@@ -1,0 +1,12 @@
+{
+  "required": true,
+  "package": "ru.ldpe.dialogauth.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "client": [
+    "ClientCommonNetworkHandlerAccessorMixin",
+    "ClientOutgoingConnectionMixin",
+    "ConnectScreenMixin"
+  ],
+  "injectors": {"defaultRequire": 1},
+  "refmap": "companion-dialog-auth-refmap.json"
+}

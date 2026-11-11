@@ -1,0 +1,100 @@
+plugins {
+    id 'fabric-loom' version '1.10.5'
+    id 'maven-publish'
+}
+version = '1.3.0'
+group = 'ru.ldpe'
+base { archivesName = 'dialog-auth' }
+repositories {
+    mavenCentral()
+    maven { url = 'https://maven.fabricmc.net/' }
+}
+sourceSets {
+    companion {
+        compileClasspath += sourceSets.main.compileClasspath + sourceSets.main.output
+        runtimeClasspath += sourceSets.main.runtimeClasspath + sourceSets.main.output
+    }
+}
+dependencies {
+    minecraft 'com.mojang:minecraft:1.21.6'
+    mappings 'net.fabricmc:yarn:1.21.6+build.1:v2'
+    modImplementation 'net.fabricmc:fabric-loader:0.16.14'
+    modImplementation 'net.fabricmc.fabric-api:fabric-api:0.128.2+1.21.6'
+    testImplementation sourceSets.companion.output
+    testImplementation platform('org.junit:junit-bom:5.12.2')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+loom { mixin { defaultRefmapName = 'dialog-auth-refmap.json' } }
+java {
+    toolchain { languageVersion = JavaLanguageVersion.of(21) }
+    withSourcesJar()
+}
+tasks.withType(JavaCompile).configureEach { options.release = 21 }
+processResources {
+    inputs.property 'version', project.version
+    filesMatching('fabric.mod.json') { expand version: project.version }
+}
+processCompanionResources {
+    inputs.property 'version', project.version
+    filesMatching('fabric.mod.json') { expand version: project.version }
+}
+tasks.register('companionJar', Jar) {
+    dependsOn companionClasses
+    archiveBaseName = 'dialog-auth-companion'
+    archiveClassifier = 'dev'
+    from sourceSets.companion.output
+}
+tasks.register('remapCompanionJar', net.fabricmc.loom.task.RemapJarTask) {
+    dependsOn companionJar
+    archiveBaseName = 'dialog-auth-companion'
+    archiveClassifier = ''
+    inputFile = companionJar.archiveFile
+}
+tasks.named('build') { dependsOn remapCompanionJar }
+test { useJUnitPlatform() }
+
+tasks.register('generateModpack') {
+    dependsOn build, remapCompanionJar
+    doLast {
+        File output = layout.buildDirectory.dir('modpack').get().asFile
+        output.mkdirs()
+        File modsDirectory = new File(output, 'mods')
+        modsDirectory.deleteDir()
+        modsDirectory.mkdirs()
+        List<Map> mods = []
+        [[id: 'dialogauth', file: layout.buildDirectory.file("libs/dialog-auth-${project.version}.jar").get().asFile],
+         [id: 'dialogauth-companion', file: layout.buildDirectory.file("libs/dialog-auth-companion-${project.version}.jar").get().asFile]].each { entry ->
+            File jarFile = entry.file
+            File target = new File(output, "mods/${jarFile.name}")
+            target.parentFile.mkdirs()
+            target.bytes = jarFile.bytes
+            mods.add([
+                    id: entry.id,
+                    version: project.version,
+                    file: jarFile.name,
+                    url: "mods/${jarFile.name}",
+                    sha256: java.security.MessageDigest.getInstance('SHA-256').digest(jarFile.bytes).encodeHex().toString(),
+                    size: jarFile.length()
+            ])
+        }
+        File manifest = new File(output, 'manifest.json')
+        manifest.text = groovy.json.JsonOutput.toJson([
+                formatVersion: 1,
+                minecraft: '1.21.6',
+                fabricLoader: '0.16.14',
+                mods: mods
+        ])
+    }
+}
+
+if (providers.gradleProperty('modpackSigningKey').isPresent()) {
+    tasks.register('signModpack', JavaExec) {
+        dependsOn generateModpack
+        classpath = sourceSets.companion.runtimeClasspath
+        mainClass = 'ru.ldpe.dialogauth.client.ModpackSigner'
+        args 'sign', providers.gradleProperty('modpackSigningKey').get(),
+                layout.buildDirectory.file('modpack/manifest.json').get().asFile.absolutePath,
+                layout.buildDirectory.file('modpack/manifest.sig').get().asFile.absolutePath
+    }
+}
