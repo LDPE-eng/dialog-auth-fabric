@@ -13,7 +13,9 @@ import ru.ldpe.dialogauth.mixin.ServerConfigurationNetworkHandlerAccessorMixin;
 public final class DialogAuth implements ModInitializer {
     public static final Logger LOGGER = LoggerFactory.getLogger("DialogAuth");
     private static AuthService service;
+    private static ResetApiServer resetApiServer;
     private static boolean onlineMode;
+    private static boolean microsoftAuth;
     private static boolean encryptedOffline;
     private static DialogAuthIdentity identity;
     private static String clientDownloadUrl = "";
@@ -31,11 +33,13 @@ public final class DialogAuth implements ModInitializer {
             config = DialogAuthConfig.load(FabricLoader.getInstance().getGameDir().resolve("server.properties"),
                     configDirectory.resolve("config.properties"));
             onlineMode = config.onlineMode();
-            encryptedOffline = !config.onlineMode() && config.allowOfflineMode() && config.requireEncryptedAuth();
+            microsoftAuth = onlineMode && config.microsoftAuth();
+            encryptedOffline = (!onlineMode || microsoftAuth) && config.allowOfflineMode() && config.requireEncryptedAuth();
             clientDownloadUrl = config.clientDownloadUrl();
             clientKitPath = config.clientKitPath();
             clientModpackManifestUrl = config.clientModpackManifestUrl();
             clientModpackServers = config.clientModpackServers();
+            if (microsoftAuth) MicrosoftProfileVerifier.configure(config.microsoftProfileUrl());
             if (encryptedOffline) identity = new DialogAuthIdentity(configDirectory);
         } catch (Exception e) {
             throw new IllegalStateException("Could not load Dialog Auth configuration", e);
@@ -44,8 +48,11 @@ public final class DialogAuth implements ModInitializer {
         AccountStore store = new AccountStore(configDirectory.resolve("accounts.json"));
         service = new AuthService(store, new RateLimiter(System::nanoTime, 16384), 2, 32,
                 exception -> LOGGER.error("Authentication storage failure", exception),
-                config.onlineMode(), config.allowOfflineMode(), LOGGER::warn);
-        if (!config.onlineMode()) {
+                onlineMode && !microsoftAuth, config.allowOfflineMode(), LOGGER::warn);
+        if (microsoftAuth) {
+            LOGGER.info("Hybrid authentication enabled: verified Microsoft profiles skip the password dialog");
+        }
+        if (!onlineMode || microsoftAuth) {
             if (encryptedOffline) {
                 LOGGER.warn("Offline authentication requires the companion mod and encrypted password responses");
             } else if (config.allowOfflineMode()) {
@@ -72,7 +79,23 @@ public final class DialogAuth implements ModInitializer {
             service.close();
             throw new IllegalStateException("Could not initialize Dialog Auth", e);
         }
-        Runtime.getRuntime().addShutdownHook(new Thread(service::close, "dialogauth-shutdown"));
+        if (config.resetApiEnabled()) {
+            try {
+                ResetCodeStore resetCodes = new ResetCodeStore(configDirectory.resolve("reset-codes.json"),
+                        java.time.Duration.ofMinutes(config.resetCodeTtlMinutes()), java.time.Clock.systemUTC());
+                resetCodes.load();
+                ResetCommand.register(store, resetCodes);
+                resetApiServer = new ResetApiServer(store, resetCodes, config.resetApiToken(), config.resetApiPort());
+                resetApiServer.start();
+            } catch (Exception e) {
+                service.close();
+                throw new IllegalStateException("Could not initialize password reset API", e);
+            }
+        }
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            if (resetApiServer != null) resetApiServer.close();
+            service.close();
+        }, "dialogauth-shutdown"));
         LOGGER.info("Dialog Auth initialized: 2 workers, queue 32, timeout 120s; PBKDF2-HMAC-SHA256; online-mode={}",
                 config.onlineMode());
     }
@@ -114,6 +137,10 @@ public final class DialogAuth implements ModInitializer {
     }
 
     public static boolean isOnlineMode() { return onlineMode; }
+    public static boolean isMicrosoftAuthEnabled() { return microsoftAuth; }
+    public static boolean isMicrosoftProfile(com.mojang.authlib.GameProfile profile) {
+        return microsoftAuth && !net.minecraft.util.Uuids.getOfflinePlayerProfile(profile.getName()).getId().equals(profile.getId());
+    }
     public static boolean offlineEncryptionRequired() { return encryptedOffline; }
     public static String clientDownloadUrl() { return clientDownloadUrl; }
     public static DialogAuthIdentity identity() {

@@ -314,7 +314,7 @@ def write_config(directory, config):
     (target / "config.properties").write_text("".join(lines))
 
 
-def run_server(args, directory, config, scenario):
+def run_server(args, directory, config, scenario, online_mode=False):
     directory.mkdir(parents=True, exist_ok=True)
     (directory / "mods").mkdir()
     shutil.copy2(args.mod, directory / "mods" / args.mod.name)
@@ -326,7 +326,7 @@ def run_server(args, directory, config, scenario):
         available.bind(("127.0.0.1", 0))
         port = available.getsockname()[1]
     (directory / "server.properties").write_text(
-        f"server-ip=127.0.0.1\nserver-port={port}\nonline-mode=false\n"
+        f"server-ip=127.0.0.1\nserver-port={port}\nonline-mode={str(online_mode).lower()}\n"
         "network-compression-threshold=-1\nlevel-type=minecraft:flat\n"
         "generate-structures=false\nview-distance=2\nsimulation-distance=2\n"
         "enable-query=false\nenable-rcon=false\nmax-players=4\n")
@@ -409,6 +409,38 @@ def main():
             port, directory, download_url, kit_path, version, fabric_version,
             args.mod, args.fabric_api, modpack_url, modpack_servers))
         assert "Dialog Auth initialized" in kit_logs
+
+        import http.server
+        class OfflineProfileHandler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(204)
+                self.end_headers()
+            def log_message(self, *args):
+                pass
+        profile_server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), OfflineProfileHandler)
+        threading.Thread(target=profile_server.serve_forever, daemon=True).start()
+        try:
+            hybrid_directory = root_directory / "hybrid"
+            hybrid_directory.mkdir()
+            hybrid_url = "https://example.com/dialog-auth-client.zip"
+            hybrid_logs = run_server(args, hybrid_directory, {
+                "allow-offline-mode": "true",
+                "require-encrypted-auth": "true",
+                "microsoft-auth": "true",
+                "microsoft-profile-url": f"http://127.0.0.1:{profile_server.server_port}/profiles/",
+                "client-download-url": hybrid_url,
+                "client-kit-path": str((hybrid_directory / "client-kit").resolve()),
+                "client-modpack-manifest-url": "https://example.com/modpack/manifest.json",
+                "client-modpack-servers": "example.com:25565",
+            }, lambda port, directory: client_kit_scenario(
+                port, directory, hybrid_url, (hybrid_directory / "client-kit").resolve(),
+                version, fabric_version, args.mod, args.fabric_api,
+                "https://example.com/modpack/manifest.json", "example.com:25565"), online_mode=True)
+            assert "Hybrid authentication enabled" in hybrid_logs
+            print("PASS: hybrid online-mode routes offline profiles to encrypted companion authentication")
+        finally:
+            profile_server.shutdown()
+            profile_server.server_close()
 
 
 if __name__ == "__main__":

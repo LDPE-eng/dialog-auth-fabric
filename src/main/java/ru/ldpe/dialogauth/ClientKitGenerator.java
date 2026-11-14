@@ -139,7 +139,7 @@ public final class ClientKitGenerator {
                 1. Если у вас была версия 1.3.0, один раз удалите из папки mods экземпляра
                    старые dialog-auth-1.3.0.jar и dialog-auth-companion-1.3.0.jar.
                 2. Откройте Prism Launcher.
-                3. Создайте экземпляр Minecraft 1.21.6 с Fabric Loader или откройте существующий.
+                3. Создайте экземпляр Minecraft 1.21.6 с Fabric Loader 0.17.3+ или откройте существующий.
                 4. Скопируйте в папку mods этого экземпляра файлы из папки mods архива:
                    - %s
                    - %s

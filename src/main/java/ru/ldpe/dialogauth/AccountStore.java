@@ -118,6 +118,20 @@ public final class AccountStore implements AuthBackend {
         return true;
     }
 
+    public java.util.Optional<UUID> findUuidByUsername(String username) throws IOException {
+        var match = findByUsername(username);
+        return match == null ? java.util.Optional.empty() : java.util.Optional.of(match.getKey());
+    }
+
+    public synchronized boolean resetPassword(UUID uuid, char[] password) throws IOException, GeneralSecurityException {
+        AccountRecord record = accounts.get(uuid);
+        if (record == null) return false;
+        var encoded = PasswordHasher.hash(password);
+        commit(uuid, new AccountRecord(record.username, encoded.saltBase64(), encoded.hashBase64(),
+                encoded.iterations(), record.createdAt, record.lastLogin));
+        return true;
+    }
+
     private boolean hasUsername(String username) {
         String canonical = canonical(username);
         return accounts.values().stream().anyMatch(record -> canonical(record.username).equals(canonical));

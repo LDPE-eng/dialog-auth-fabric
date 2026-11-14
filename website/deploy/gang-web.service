@@ -1,0 +1,22 @@
+[Unit]
+Description=GANG Minecraft download and password reset website
+After=network.target minecraft-fabric.service
+
+[Service]
+Type=simple
+User=minecraft
+Group=minecraft
+WorkingDirectory=/opt/gang-web
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=/opt/gang-web/reset-token.conf
+ExecStart=/usr/bin/python3 /opt/gang-web/server.py --host 0.0.0.0 --port 8088 --static-dir /opt/gang-web/static
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadOnlyPaths=/opt/gang-web
+
+[Install]
+WantedBy=multi-user.target

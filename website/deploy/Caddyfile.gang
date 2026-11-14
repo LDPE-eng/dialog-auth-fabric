@@ -1,0 +1,14 @@
+gang.ldp-e.ru {
+	encode zstd gzip
+	handle_path /downloads/* {
+		reverse_proxy 172.18.0.1:25577
+	}
+	handle {
+		reverse_proxy 172.18.0.1:8088
+	}
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy no-referrer
+	}
+}

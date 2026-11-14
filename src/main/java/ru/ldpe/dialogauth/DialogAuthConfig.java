@@ -10,7 +10,10 @@ import java.util.Properties;
 
 public record DialogAuthConfig(boolean onlineMode, boolean allowOfflineMode, boolean requireEncryptedAuth,
                                String clientDownloadUrl, String clientKitPath,
-                               String clientModpackManifestUrl, String clientModpackServers) {
+                               String clientModpackManifestUrl, String clientModpackServers,
+                               boolean microsoftAuth, String microsoftProfileUrl,
+                               boolean resetApiEnabled, int resetApiPort, String resetApiToken,
+                               int resetCodeTtlMinutes) {
     private static final String DEFAULT_CONFIG = """
             # Dialog Auth offline-client support is disabled by default (fail closed).
             # WARNING: with online-mode=false and allow-offline-mode=true, Microsoft does not
@@ -29,6 +32,14 @@ public record DialogAuthConfig(boolean onlineMode, boolean allowOfflineMode, boo
             # dialog-auth-client.zip includes config/dialogauth/modpack.properties.
             client-modpack-manifest-url=
             client-modpack-servers=
+            # Let verified Microsoft profiles skip the server password dialog.
+            microsoft-auth=false
+            microsoft-profile-url=https://api.mojang.com/users/profiles/minecraft/
+            # Localhost API used by the password-reset website. Requires a long random token.
+            reset-api-enabled=false
+            reset-api-port=25578
+            reset-api-token=
+            reset-code-ttl-minutes=15
             """;
 
     public static DialogAuthConfig load(Path serverProperties, Path configFile) throws IOException {
@@ -46,7 +57,13 @@ public record DialogAuthConfig(boolean onlineMode, boolean allowOfflineMode, boo
                 readString(configFile, "client-download-url", ""),
                 readString(configFile, "client-kit-path", "client-kit"),
                 readString(configFile, "client-modpack-manifest-url", ""),
-                readString(configFile, "client-modpack-servers", ""));
+                readString(configFile, "client-modpack-servers", ""),
+                readBoolean(configFile, "microsoft-auth", false),
+                readString(configFile, "microsoft-profile-url", "https://api.mojang.com/users/profiles/minecraft/"),
+                readBoolean(configFile, "reset-api-enabled", false),
+                readInt(configFile, "reset-api-port", 25578, 1, 65535),
+                readString(configFile, "reset-api-token", ""),
+                readInt(configFile, "reset-code-ttl-minutes", 15, 1, 1440));
     }
 
     private static Properties properties(Path file) throws IOException {
@@ -72,5 +89,17 @@ public record DialogAuthConfig(boolean onlineMode, boolean allowOfflineMode, boo
         String value = properties(file).getProperty(key);
         if (value == null) return defaultValue;
         return value.trim();
+    }
+
+    private static int readInt(Path file, String key, int defaultValue, int minimum, int maximum) throws IOException {
+        String value = readString(file, key, "");
+        if (value.isEmpty()) return defaultValue;
+        try {
+            int parsed = Integer.parseInt(value);
+            if (parsed < minimum || parsed > maximum) throw new IOException("Property " + key + " is out of range");
+            return parsed;
+        } catch (NumberFormatException e) {
+            throw new IOException("Property " + key + " must be an integer", e);
+        }
     }
 }
