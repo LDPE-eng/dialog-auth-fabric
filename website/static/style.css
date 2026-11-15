@@ -64,6 +64,11 @@ code { padding: 1px 4px; background: #edf2f5; border: 1px solid #dce4e9; border-
 .status { border: 1px solid; border-radius: 3px; padding: 11px 13px; margin: 18px 0; }
 .status.success { color: var(--success); background: #edf8f0; border-color: #a8d3b5; }
 .status.error { color: var(--error); background: #fff1f1; border-color: #e0b0b0; }
+.manual-list { display: grid; gap: 12px; margin-top: 18px; }
+.manual-mod { border-top: 1px solid var(--line); padding-top: 12px; }
+.manual-mod h3 { margin: 0; font-size: 17px; }
+.manual-mod p { margin: 6px 0; }
+.hash { overflow-wrap: anywhere; }
 @media (max-width: 760px) {
   .layout { grid-template-columns: 1fr; }
   .install-panel { grid-column: auto; }

@@ -2,7 +2,7 @@ plugins {
     id 'fabric-loom' version '1.10.5'
     id 'maven-publish'
 }
-version = '1.5.0'
+version = '1.5.2'
 group = 'ru.ldpe'
 base { archivesName = 'dialog-auth' }
 repositories {
@@ -44,6 +44,12 @@ tasks.register('companionJar', Jar) {
     archiveBaseName = 'dialog-auth-companion'
     archiveClassifier = 'dev'
     from sourceSets.companion.output
+    // Shared protocol classes make the companion independent of the server mod.
+    from(sourceSets.main.output) {
+        include 'ru/ldpe/dialogauth/AuthCrypto*.class'
+        include 'ru/ldpe/dialogauth/DialogAuthPayloads*.class'
+        include 'ru/ldpe/dialogauth/mixin/ClientConnectionAccessorMixin.class'
+    }
 }
 tasks.register('remapCompanionJar', net.fabricmc.loom.task.RemapJarTask) {
     dependsOn companionJar
@@ -51,14 +57,27 @@ tasks.register('remapCompanionJar', net.fabricmc.loom.task.RemapJarTask) {
     archiveClassifier = ''
     inputFile = companionJar.archiveFile
 }
-tasks.named('jar') {
+tasks.register('verifyCompanionStandalone') {
     dependsOn remapCompanionJar
-    from(remapCompanionJar) {
-        into 'assets/dialogauth/client-kit'
-        rename { 'dialog-auth-companion.jar' }
+    doLast {
+        File jarFile = remapCompanionJar.archiveFile.get().asFile
+        try (java.util.zip.ZipFile zip = new java.util.zip.ZipFile(jarFile)) {
+            def metadataEntry = zip.getEntry('fabric.mod.json')
+            assert metadataEntry != null: 'Companion has no fabric.mod.json'
+            def metadata = new groovy.json.JsonSlurper().parseText(zip.getInputStream(metadataEntry).getText('UTF-8'))
+            assert !metadata.depends.containsKey('dialogauth'): 'Companion must not require the server mod'
+            [
+                    'ru/ldpe/dialogauth/AuthCrypto.class',
+                    'ru/ldpe/dialogauth/DialogAuthPayloads.class',
+                    'ru/ldpe/dialogauth/mixin/ClientConnectionAccessorMixin.class'
+            ].each { path ->
+                assert zip.getEntry(path) != null: "Companion is missing shared class ${path}"
+            }
+            assert zip.getEntry('ru/ldpe/dialogauth/AuthTask.class') == null: 'Server-only AuthTask leaked into companion'
+        }
     }
 }
-tasks.named('build') { dependsOn remapCompanionJar }
+tasks.named('build') { dependsOn verifyCompanionStandalone }
 test { useJUnitPlatform() }
 
 tasks.register('generateModpack') {
@@ -70,8 +89,7 @@ tasks.register('generateModpack') {
         modsDirectory.deleteDir()
         modsDirectory.mkdirs()
         List<Map> mods = []
-        [[id: 'dialogauth', file: layout.buildDirectory.file("libs/dialog-auth-${project.version}.jar").get().asFile],
-         [id: 'dialogauth-companion', file: layout.buildDirectory.file("libs/dialog-auth-companion-${project.version}.jar").get().asFile]].each { entry ->
+        [[id: 'dialogauth-companion', file: layout.buildDirectory.file("libs/dialog-auth-companion-${project.version}.jar").get().asFile]].each { entry ->
             File jarFile = entry.file
             File target = new File(output, "mods/${jarFile.name}")
             target.parentFile.mkdirs()

@@ -4,6 +4,7 @@ import java.nio.file.Path;
 import java.util.concurrent.CompletableFuture;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.api.networking.v1.ServerConfigurationConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerConfigurationNetworking;
 import net.fabricmc.loader.api.FabricLoader;
 import org.slf4j.Logger;
@@ -16,9 +17,11 @@ public final class DialogAuth implements ModInitializer {
     private static ResetApiServer resetApiServer;
     private static boolean onlineMode;
     private static boolean microsoftAuth;
+    private static boolean companionAuthUi;
     private static boolean encryptedOffline;
     private static DialogAuthIdentity identity;
     private static String clientDownloadUrl = "";
+    private static String serverId = "";
     private static String clientKitPath = "client-kit";
     private static String clientModpackManifestUrl = "";
     private static String clientModpackServers = "";
@@ -34,17 +37,19 @@ public final class DialogAuth implements ModInitializer {
                     configDirectory.resolve("config.properties"));
             onlineMode = config.onlineMode();
             microsoftAuth = onlineMode && config.microsoftAuth();
+            companionAuthUi = config.authUi().equals("companion");
             encryptedOffline = (!onlineMode || microsoftAuth) && config.allowOfflineMode() && config.requireEncryptedAuth();
             clientDownloadUrl = config.clientDownloadUrl();
+            serverId = config.serverId();
             clientKitPath = config.clientKitPath();
             clientModpackManifestUrl = config.clientModpackManifestUrl();
             clientModpackServers = config.clientModpackServers();
             if (microsoftAuth) MicrosoftProfileVerifier.configure(config.microsoftProfileUrl());
-            if (encryptedOffline) identity = new DialogAuthIdentity(configDirectory);
+            if (encryptedOffline || companionAuthUi) identity = new DialogAuthIdentity(configDirectory);
         } catch (Exception e) {
             throw new IllegalStateException("Could not load Dialog Auth configuration", e);
         }
-        generateClientKit();
+        generateClientDistribution(config);
         AccountStore store = new AccountStore(configDirectory.resolve("accounts.json"));
         service = new AuthService(store, new RateLimiter(System::nanoTime, 16384), 2, 32,
                 exception -> LOGGER.error("Authentication storage failure", exception),
@@ -63,6 +68,7 @@ public final class DialogAuth implements ModInitializer {
                         + "all players will be disconnected (fail closed)");
             }
         }
+        registerCompanionGate();
         registerNetworkHandlers();
         CompletableFuture<Void> loaded = new CompletableFuture<>();
         service.initialize(() -> {
@@ -100,20 +106,27 @@ public final class DialogAuth implements ModInitializer {
                 config.onlineMode());
     }
 
-    private static void generateClientKit() {
-        if (clientKitPath.isBlank()) {
-            LOGGER.info("Dialog Auth client kit generation is disabled (client-kit-path is empty)");
+    private static void generateClientDistribution(DialogAuthConfig config) {
+        if (!config.clientDistributionEnabled()) {
+            LOGGER.info("Client distribution is disabled");
             return;
         }
         try {
-            Path directory = Path.of(clientKitPath);
-            if (!directory.isAbsolute()) directory = FabricLoader.getInstance().getGameDir().resolve(directory);
-            Path output = directory.resolve("dialog-auth-client.zip");
-            ClientKitGenerator.generateFromFabric(output, clientModpackManifestUrl, clientModpackServers);
-            LOGGER.info("Dialog Auth client kit written to {}", output);
+            ClientDistribution.generateFromFabric(config);
         } catch (Exception e) {
-            LOGGER.error("Could not generate the Dialog Auth client kit", e);
+            throw new IllegalStateException("Could not generate configured client distribution", e);
         }
+    }
+
+    private static void registerCompanionGate() {
+        // Channel negotiation is complete here; Fabric queues registry sync later, during CONFIGURE.
+        ServerConfigurationConnectionEvents.BEFORE_CONFIGURE.register((handler, server) -> {
+            if (!companionRequired()) return;
+            var profile = ((ServerConfigurationNetworkHandlerAccessorMixin) handler).dialogauth$getProfile();
+            if (isMicrosoftProfile(profile)) return;
+            LOGGER.debug("Checking companion before registry sync for {}", profile.getName());
+            CompanionGate.check(handler);
+        });
     }
 
     private static void registerNetworkHandlers() {
@@ -142,7 +155,10 @@ public final class DialogAuth implements ModInitializer {
         return microsoftAuth && !net.minecraft.util.Uuids.getOfflinePlayerProfile(profile.getName()).getId().equals(profile.getId());
     }
     public static boolean offlineEncryptionRequired() { return encryptedOffline; }
+    public static boolean isCompanionAuthUi() { return companionAuthUi; }
+    public static boolean companionRequired() { return encryptedOffline || companionAuthUi; }
     public static String clientDownloadUrl() { return clientDownloadUrl; }
+    public static String serverId() { return serverId; }
     public static DialogAuthIdentity identity() {
         if (identity == null) throw new IllegalStateException("Dialog Auth server identity is not initialized");
         return identity;

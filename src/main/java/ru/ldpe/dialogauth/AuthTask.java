@@ -33,7 +33,7 @@ import ru.ldpe.dialogauth.mixin.ServerConfigurationNetworkHandlerAccessorMixin;
 
 public final class AuthTask implements ServerPlayerConfigurationTask {
     public static final Key KEY = new Key("dialogauth:auth");
-    public static final Identifier CLICK_EVENT_ID = Identifier.of("dialogauth", "submit");
+    public static final Identifier CLICK_EVENT_ID = DialogAuthPayloads.CLICK_EVENT_ID;
     private final GameProfile profile;
     private final ClientConnection connection;
     private final ServerConfigurationNetworkHandler handler;
@@ -68,7 +68,12 @@ public final class AuthTask implements ServerPlayerConfigurationTask {
                             && ((ServerConfigurationNetworkHandlerAccessorMixin) handler).dialogauth$getCurrentTask() == AuthTask.this;
                 }
                 public void dialog(boolean registering, String error) {
-                    connection.send(createDialogPacket(registering, error));
+                    if (DialogAuth.isCompanionAuthUi()) {
+                        connection.send(ServerConfigurationNetworking.createS2CPacket(new DialogAuthPayloads.AuthFormPayload(
+                                DialogAuthPayloads.ChallengePayload.PROTOCOL_VERSION, registering, error, 8, 128)));
+                    } else {
+                        connection.send(createDialogPacket(registering, error));
+                    }
                 }
                 public void success() {
                     if (isOpen()) {
@@ -79,14 +84,15 @@ public final class AuthTask implements ServerPlayerConfigurationTask {
                 public void disconnect(String reason) { AuthTask.disconnect(connection, reason); }
             });
             channel.closeFuture().addListener(future -> session.close());
-            if (DialogAuth.offlineEncryptionRequired()) {
+            if (DialogAuth.companionRequired()) {
                 session.start(false);
                 if (!ServerConfigurationNetworking.canSend(handler, DialogAuthPayloads.ChallengePayload.ID)) {
                     disconnect(withDownloadLink("Для этого сервера нужен Dialog Auth companion-мод и Fabric API."));
                     return;
                 }
                 challengeId = UUID.randomUUID();
-                connection.send(ServerConfigurationNetworking.createS2CPacket(new DialogAuthPayloads.ChallengePayload(challengeId)));
+                connection.send(ServerConfigurationNetworking.createS2CPacket(new DialogAuthPayloads.ChallengePayload(challengeId, DialogAuthPayloads.ChallengePayload.PROTOCOL_VERSION,
+                        DialogAuth.serverId())));
             } else {
                 session.start();
             }
@@ -137,7 +143,7 @@ public final class AuthTask implements ServerPlayerConfigurationTask {
     }
 
     public void handleResponse(NbtCompound response) {
-        if (DialogAuth.offlineEncryptionRequired()) {
+        if (DialogAuth.companionRequired()) {
             disconnect(withDownloadLink("Незашифрованный пароль запрещён. Установите Dialog Auth companion-мод."));
             return;
         }
@@ -152,7 +158,7 @@ public final class AuthTask implements ServerPlayerConfigurationTask {
         body.add(new PlainMessageDialogBody(Text.literal(registering
                 ? "Придумайте пароль (8–128 символов) и повторите его."
                 : "Введите пароль от этого аккаунта."), 300));
-        if (DialogAuth.offlineEncryptionRequired()) {
+        if (DialogAuth.companionRequired()) {
             body.add(new PlainMessageDialogBody(Text.literal("Пароль передаётся в зашифрованном виде."), 300));
         } else if (DialogAuth.isOnlineMode()
                 && !ServerConfigurationNetworking.canSend(handler, DialogAuthPayloads.ChallengePayload.ID)) {

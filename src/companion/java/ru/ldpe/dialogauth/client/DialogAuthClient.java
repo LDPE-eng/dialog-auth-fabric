@@ -12,8 +12,10 @@ public final class DialogAuthClient implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
         DialogAuthPayloads.initialize();
-        SecureClientHandler.initialize(new AuthServerTrustStore(
-                FabricLoader.getInstance().getConfigDir().resolve("dialogauth/auth-server-public.key")));
-        ModpackSync.initialize();
+        ServerProfileStore profiles = new ServerProfileStore(
+                FabricLoader.getInstance().getConfigDir().resolve("dialogauth"));
+        SecureClientHandler.initialize(profiles);
+        CompanionAuthScreen.initialize();
+        ModpackSync.initialize(profiles);
     }
 }

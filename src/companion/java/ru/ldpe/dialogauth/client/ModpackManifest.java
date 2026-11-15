@@ -18,7 +18,10 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-public record ModpackManifest(int formatVersion, String minecraft, String fabricLoader, List<Mod> mods) {
+public record ModpackManifest(int formatVersion, String minecraft, String fabricLoader, List<Mod> mods, String serverId) {
+    public ModpackManifest(int formatVersion, String minecraft, String fabricLoader, List<Mod> mods) {
+        this(formatVersion, minecraft, fabricLoader, mods, "");
+    }
     private static final Gson GSON = new Gson();
     public static final int MAX_MANIFEST_BYTES = 1024 * 1024;
     public static final int MAX_MOD_BYTES = 64 * 1024 * 1024;
@@ -57,8 +60,11 @@ public record ModpackManifest(int formatVersion, String minecraft, String fabric
     }
 
     private void validate() throws IOException {
-        if (formatVersion != 1 || minecraft == null || fabricLoader == null || mods == null) {
+        if (formatVersion != 1 && formatVersion != 2 || minecraft == null || fabricLoader == null || mods == null) {
             throw new IOException("Unsupported modpack manifest");
+        }
+        if (formatVersion == 2 && (serverId == null || !serverId.matches("[a-z0-9][a-z0-9._-]{0,63}"))) {
+            throw new IOException("Invalid or missing serverId");
         }
         Set<String> files = new HashSet<>();
         for (Mod mod : mods) {
@@ -78,5 +84,10 @@ public record ModpackManifest(int formatVersion, String minecraft, String fabric
         }
     }
 
-    public record Mod(String id, String version, String file, String url, String sha256, long size) {}
+    public record Mod(String id, String version, String file, String url, String sha256, long size,
+                      boolean required, String homepage, String sources) {
+        public Mod(String id, String version, String file, String url, String sha256, long size) {
+            this(id, version, file, url, sha256, size, true, "", "");
+        }
+    }
 }

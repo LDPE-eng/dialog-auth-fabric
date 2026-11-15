@@ -1,4 +1,5 @@
 import json
+import tempfile
 import threading
 import unittest
 import urllib.error
@@ -36,8 +37,16 @@ class WebsiteTest(unittest.TestCase):
         FakeModHandler.received = []
         self.mod = ThreadingHTTPServer(("127.0.0.1", 0), FakeModHandler)
         threading.Thread(target=self.mod.serve_forever, daemon=True).start()
+        self.temporary = tempfile.TemporaryDirectory()
+        manifest_path = Path(self.temporary.name) / "manifest.json"
+        manifest_path.write_text(json.dumps({"formatVersion": 2, "serverId": "gang", "mods": [{
+            "id": "trmt", "version": "0.5.1", "file": "trmt-0.5.1.jar", "size": 123,
+            "sha256": "a" * 64, "required": True, "homepage": "https://example.com/mod",
+            "sources": "https://example.com/source"}]}))
+        manifest_path.with_name("modpack-public.key").write_bytes(b"test-public-key")
         self.site = create_server("127.0.0.1", 0, Path(__file__).parent / "static",
-                                  f"http://127.0.0.1:{self.mod.server_port}/reset", FakeModHandler.token)
+                                  f"http://127.0.0.1:{self.mod.server_port}/reset", FakeModHandler.token,
+                                  manifest_path=manifest_path)
         threading.Thread(target=self.site.serve_forever, daemon=True).start()
         self.base = f"http://127.0.0.1:{self.site.server_port}"
 
@@ -46,6 +55,7 @@ class WebsiteTest(unittest.TestCase):
         self.site.server_close()
         self.mod.shutdown()
         self.mod.server_close()
+        self.temporary.cleanup()
 
     def get(self, path):
         with urllib.request.urlopen(self.base + path, timeout=5) as response:
@@ -97,6 +107,25 @@ class WebsiteTest(unittest.TestCase):
         status, page = self.post(code="654321")
         self.assertEqual(status, 429)
         self.assertIn("Слишком много попыток", page)
+
+    def test_manual_install_report_contains_versions_hashes_and_project_links(self):
+        _, _, index = self.get("/")
+        self.assertIn("Ручная установка и проверка", index)
+        self.assertIn("PojavLauncher", index)
+        self.assertIn("trmt 0.5.1", index)
+        self.assertIn("a" * 64, index)
+        self.assertIn("https://example.com/source", index)
+        self.assertIn("Fingerprint ключа подписи", index)
+        self.assertNotIn("{{MANUAL_REPORT}}", index)
+
+    def test_missing_manifest_does_not_break_download_or_reset(self):
+        self.site.RequestHandlerClass.application.manifest_path = Path(self.temporary.name) / "missing.json"
+        status, _, index = self.get("/")
+        self.assertEqual(status, 200)
+        self.assertIn("Список модов временно недоступен", index)
+        status, _, reset = self.get("/reset")
+        self.assertEqual(status, 200)
+        self.assertIn("Сброс пароля", reset)
 
 
 if __name__ == "__main__":

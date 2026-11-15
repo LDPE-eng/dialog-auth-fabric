@@ -1,4 +1,5 @@
 import argparse
+import hashlib
 import html
 import json
 import os
@@ -34,14 +35,58 @@ class RateLimiter:
 
 
 class Application:
-    def __init__(self, static_dir, reset_api_url, token, limiter=None):
+    def __init__(self, static_dir, reset_api_url, token, limiter=None, manifest_path=None):
         self.static_dir = Path(static_dir).resolve()
         self.reset_api_url = reset_api_url
         self.token = token
         self.limiter = limiter or RateLimiter()
+        self.manifest_path = Path(manifest_path) if manifest_path else None
         self.index = (self.static_dir / "index.html").read_text()
         self.reset = (self.static_dir / "reset.html").read_text()
         self.css = (self.static_dir / "style.css").read_bytes()
+
+    def index_page(self):
+        return self.index.replace("{{MANUAL_REPORT}}", self.manual_report())
+
+    def manual_report(self):
+        if self.manifest_path is None:
+            return '<p class="note">Список модов для ручной установки пока не опубликован.</p>'
+        try:
+            manifest = json.loads(self.manifest_path.read_text())
+            if manifest.get("formatVersion") != 2:
+                raise ValueError("Unsupported manifest")
+            public_key = self.manifest_path.with_name("modpack-public.key").read_bytes()
+            fingerprint = hashlib.sha256(public_key).hexdigest()
+            rows = []
+            for mod in manifest["mods"]:
+                homepage = self.safe_url(mod.get("homepage", ""))
+                sources = self.safe_url(mod.get("sources", ""))
+                links = []
+                if homepage:
+                    links.append(f'<a href="{html.escape(homepage, quote=True)}" rel="noopener noreferrer">Страница проекта</a>')
+                if sources:
+                    links.append(f'<a href="{html.escape(sources, quote=True)}" rel="noopener noreferrer">Исходники</a>')
+                rows.append('<article class="manual-mod"><h3>' + html.escape(mod["id"]) + ' '
+                            + html.escape(mod["version"]) + '</h3>'
+                            + '<p>' + ("Обязательный" if mod.get("required") else "Опциональный")
+                            + ' · ' + str(mod["size"]) + ' байт</p>'
+                            + '<p><code>' + html.escape(mod["file"]) + '</code></p>'
+                            + '<p class="hash">SHA-256: <code>' + html.escape(mod["sha256"]) + '</code></p>'
+                            + ('<p>' + ' · '.join(links) + '</p>' if links else '') + '</article>')
+            return ('<p>Сервер: <strong>' + html.escape(manifest["serverId"]) + '</strong></p>'
+                    + '<p class="hash">Fingerprint ключа подписи: <code>' + fingerprint + '</code></p>'
+                    + '<p class="note">Ссылки на исходники не являются ссылками на готовый JAR. '
+                    + 'Сверяйте SHA-256 и полностью перезапускайте игру после изменений.</p>'
+                    + '<div class="manual-list">' + ''.join(rows) + '</div>')
+        except (OSError, ValueError, KeyError, TypeError):
+            return '<p class="status error" role="status">Список модов временно недоступен. Готовая сборка и сброс пароля доступны.</p>'
+
+    @staticmethod
+    def safe_url(value):
+        if not isinstance(value, str):
+            return ""
+        parsed = urllib.parse.urlparse(value)
+        return value if parsed.scheme in ("http", "https") and parsed.netloc else ""
 
     def reset_page(self, message="", success=False, username=""):
         status = ""
@@ -59,7 +104,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = urllib.parse.urlparse(self.path).path
         if path == "/":
-            self.respond(200, self.application.index, "text/html; charset=utf-8")
+            self.respond(200, self.application.index_page(), "text/html; charset=utf-8")
         elif path == "/reset":
             self.respond(200, self.application.reset_page(), "text/html; charset=utf-8")
         elif path == "/style.css":
@@ -137,8 +182,8 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
 
-def create_server(host, port, static_dir, reset_api_url, token, limiter=None):
-    application = Application(static_dir, reset_api_url, token, limiter)
+def create_server(host, port, static_dir, reset_api_url, token, limiter=None, manifest_path=None):
+    application = Application(static_dir, reset_api_url, token, limiter, manifest_path)
     handler = type("ConfiguredHandler", (Handler,), {"application": application})
     return ThreadingHTTPServer((host, port), handler)
 
@@ -149,11 +194,13 @@ def main():
     parser.add_argument("--port", type=int, default=8088)
     parser.add_argument("--static-dir", type=Path, required=True)
     parser.add_argument("--reset-api-url", default="http://127.0.0.1:25578/reset")
+    parser.add_argument("--manifest-path", type=Path)
     args = parser.parse_args()
     token = os.environ.get("DIALOG_AUTH_RESET_TOKEN", "")
     if len(token) < 32:
         raise RuntimeError("DIALOG_AUTH_RESET_TOKEN must contain at least 32 characters")
-    server = create_server(args.host, args.port, args.static_dir, args.reset_api_url, token)
+    server = create_server(args.host, args.port, args.static_dir, args.reset_api_url, token,
+                           manifest_path=args.manifest_path)
     try:
         server.serve_forever()
     finally:

@@ -44,7 +44,6 @@ public final class ModpackInstaller {
             Files.write(downloaded, bytes);
             pending.add(new Pending(mod.file(), downloaded, target));
         }
-        if (pending.isEmpty()) return List.of();
         Path backup = modsDirectory.resolve(".dialogauth-backup").resolve(Instant.now().toString().replace(':', '-'));
         List<String> changed = new ArrayList<>();
         removeStaleVersions(manifest, modsDirectory, backup, changed);
@@ -85,18 +84,23 @@ public final class ModpackInstaller {
         }
     }
 
-    private static String readModId(Path jar) {
+    public static ModInfo readModInfo(Path jar) {
         try (ZipFile zip = new ZipFile(jar.toFile())) {
             ZipEntry entry = zip.getEntry("fabric.mod.json");
             if (entry == null) return null;
             try (InputStream input = zip.getInputStream(entry)) {
                 String json = new String(input.readAllBytes(), StandardCharsets.UTF_8);
                 ModInfo info = GSON.fromJson(json, ModInfo.class);
-                return info == null || info.id == null ? null : info.id;
+                return info == null || info.id == null || info.version == null ? null : info;
             }
         } catch (IOException | RuntimeException e) {
             return null;
         }
+    }
+
+    private static String readModId(Path jar) {
+        ModInfo info = readModInfo(jar);
+        return info == null ? null : info.id();
     }
 
     public static String hash(Path file) throws IOException {
@@ -111,6 +115,6 @@ public final class ModpackInstaller {
         }
     }
 
-    private record ModInfo(String id) {}
+    public record ModInfo(String id, String version) {}
     private record Pending(String name, Path downloaded, Path target) {}
 }
