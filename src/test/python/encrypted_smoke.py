@@ -1,4 +1,5 @@
 from pathlib import Path
+from io import BytesIO
 import hashlib
 import hmac
 import struct
@@ -67,7 +68,6 @@ class EncryptedClient(Client):
             response = pack_uuid(session) + varint(len(self.client_nonce)) + self.client_nonce + varint(len(self.public)) + self.public
             self.send(2, string("dialogauth:client_hello") + response)
         elif channel == "dialogauth:server_hello":
-            from io import BytesIO
             body = BytesIO(payload)
             session = uuid.UUID(bytes=body.read(16))
             values = []
@@ -90,6 +90,16 @@ class EncryptedClient(Client):
             shared = self.private.exchange(server_key)
             self.aes = AESGCM(hkdf_key(shared, session, client_nonce, server_nonce,
                     self.public, server_public, identity_public))
+        elif channel == "dialogauth:auth_form":
+            body = BytesIO(payload)
+            version = read_varint(body.read)
+            registering = read_varint(body.read) != 0
+            error_length = read_varint(body.read)
+            error = body.read(error_length).decode()
+            minimum = read_varint(body.read)
+            maximum = read_varint(body.read)
+            self.ui_payload = (version, registering, error, minimum, maximum)
+            return 18, payload
         else:
             raise AssertionError(("Unexpected custom payload", channel))
         return self.receive()

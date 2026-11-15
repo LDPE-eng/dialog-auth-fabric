@@ -15,6 +15,7 @@ public final class DialogAuthClient implements ClientModInitializer {
         ServerProfileStore profiles = new ServerProfileStore(
                 FabricLoader.getInstance().getConfigDir().resolve("dialogauth"));
         SecureClientHandler.initialize(profiles);
+        CompanionAuthScreen.initialize();
         ModpackSync.initialize(profiles);
     }
 }

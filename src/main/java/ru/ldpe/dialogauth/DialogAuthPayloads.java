@@ -17,6 +17,7 @@ public final class DialogAuthPayloads {
     public static void initialize() {
         if (!INITIALIZED.compareAndSet(false, true)) return;
         PayloadTypeRegistry.configurationS2C().register(ChallengePayload.ID, ChallengePayload.CODEC);
+        PayloadTypeRegistry.configurationS2C().register(AuthFormPayload.ID, AuthFormPayload.CODEC);
         PayloadTypeRegistry.configurationS2C().register(ServerHelloPayload.ID, ServerHelloPayload.CODEC);
         PayloadTypeRegistry.configurationC2S().register(ClientHelloPayload.ID, ClientHelloPayload.CODEC);
         PayloadTypeRegistry.configurationC2S().register(ResponsePayload.ID, ResponsePayload.CODEC);
@@ -30,6 +31,23 @@ public final class DialogAuthPayloads {
         public ChallengePayload(PacketByteBuf buf) { this(buf.readUuid(), buf.readVarInt(), buf.readString(64)); }
         private void write(PacketByteBuf buf) { buf.writeUuid(sessionId); buf.writeVarInt(protocolVersion); buf.writeString(serverId, 64); }
         public Id<ChallengePayload> getId() { return ID; }
+    }
+
+    public record AuthFormPayload(int protocolVersion, boolean registering, String error,
+                                  int minPasswordLength, int maxPasswordLength) implements CustomPayload {
+        public static final Id<AuthFormPayload> ID = new Id<>(Identifier.of("dialogauth", "auth_form"));
+        public static final PacketCodec<PacketByteBuf, AuthFormPayload> CODEC = PacketCodec.of(AuthFormPayload::write, AuthFormPayload::new);
+        public AuthFormPayload(PacketByteBuf buf) {
+            this(buf.readVarInt(), buf.readBoolean(), buf.readString(256), buf.readVarInt(), buf.readVarInt());
+        }
+        private void write(PacketByteBuf buf) {
+            buf.writeVarInt(protocolVersion);
+            buf.writeBoolean(registering);
+            buf.writeString(error, 256);
+            buf.writeVarInt(minPasswordLength);
+            buf.writeVarInt(maxPasswordLength);
+        }
+        public Id<AuthFormPayload> getId() { return ID; }
     }
 
     public record ClientHelloPayload(UUID sessionId, byte[] nonce, byte[] publicKey) implements CustomPayload {
