@@ -86,7 +86,8 @@ public final class AuthTask implements ServerPlayerConfigurationTask {
                     return;
                 }
                 challengeId = UUID.randomUUID();
-                connection.send(ServerConfigurationNetworking.createS2CPacket(new DialogAuthPayloads.ChallengePayload(challengeId)));
+                connection.send(ServerConfigurationNetworking.createS2CPacket(new DialogAuthPayloads.ChallengePayload(challengeId, DialogAuthPayloads.ChallengePayload.PROTOCOL_VERSION,
+                        DialogAuth.serverId())));
             } else {
                 session.start();
             }

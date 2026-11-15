@@ -57,7 +57,12 @@ class EncryptedClient(Client):
             channels = [b"dialogauth:challenge", b"dialogauth:server_hello", b"dialogauth:client_hello", b"dialogauth:response"]
             self.send(2, string("minecraft:register") + b"\x00".join(channels))
         elif channel == "dialogauth:challenge":
-            session = uuid.UUID(bytes=payload)
+            body = BytesIO(payload)
+            session = uuid.UUID(bytes=body.read(16))
+            protocol_version = read_varint(body.read)
+            server_id_length = read_varint(body.read)
+            server_id = body.read(server_id_length).decode()
+            assert protocol_version == 1 and not body.read()
             self.session = session
             response = pack_uuid(session) + varint(len(self.client_nonce)) + self.client_nonce + varint(len(self.public)) + self.public
             self.send(2, string("dialogauth:client_hello") + response)

@@ -22,11 +22,13 @@ public final class DialogAuthPayloads {
         PayloadTypeRegistry.configurationC2S().register(ResponsePayload.ID, ResponsePayload.CODEC);
     }
 
-    public record ChallengePayload(UUID sessionId) implements CustomPayload {
+    public record ChallengePayload(UUID sessionId, int protocolVersion, String serverId) implements CustomPayload {
+        public static final int PROTOCOL_VERSION = 1;
         public static final Id<ChallengePayload> ID = new Id<>(Identifier.of("dialogauth", "challenge"));
         public static final PacketCodec<PacketByteBuf, ChallengePayload> CODEC = PacketCodec.of(ChallengePayload::write, ChallengePayload::new);
-        public ChallengePayload(PacketByteBuf buf) { this(buf.readUuid()); }
-        private void write(PacketByteBuf buf) { buf.writeUuid(sessionId); }
+        public ChallengePayload(UUID sessionId) { this(sessionId, PROTOCOL_VERSION, ""); }
+        public ChallengePayload(PacketByteBuf buf) { this(buf.readUuid(), buf.readVarInt(), buf.readString(64)); }
+        private void write(PacketByteBuf buf) { buf.writeUuid(sessionId); buf.writeVarInt(protocolVersion); buf.writeString(serverId, 64); }
         public Id<ChallengePayload> getId() { return ID; }
     }
 

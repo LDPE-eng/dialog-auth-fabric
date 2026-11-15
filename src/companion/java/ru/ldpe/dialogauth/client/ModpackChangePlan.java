@@ -8,7 +8,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-public record ModpackChangePlan(List<Change> changes, String fingerprint) {
+public record ModpackChangePlan(List<Change> changes, String fingerprint, String previousFingerprint) {
     public enum Type {
         INSTALL("Установка"), UPDATE("Обновление"), REMOVE("Удаление старой версии"), UNCHANGED("Без изменений");
         private final String label;
@@ -50,7 +50,11 @@ public record ModpackChangePlan(List<Change> changes, String fingerprint) {
             }
             if (old != null && !sameFile) changes.add(new Change(Type.REMOVE, mod, oldVersion, oldFile));
         }
-        return new ModpackChangePlan(List.copyOf(changes), fingerprint);
+        return new ModpackChangePlan(List.copyOf(changes), fingerprint, "");
+    }
+
+    public ModpackChangePlan withOldFingerprint(String oldFingerprint) {
+        return new ModpackChangePlan(changes, fingerprint, oldFingerprint);
     }
 
     public boolean isEmpty() {
@@ -59,8 +63,9 @@ public record ModpackChangePlan(List<Change> changes, String fingerprint) {
 
     public String report(String serverId, String address) {
         StringBuilder text = new StringBuilder("Сервер: " + serverId + "\nАдрес: " + address + "\n"
-                + "Fingerprint ключа подписи:\n" + fingerprint + "\n\n"
-                + "После перезапуска JAR выполняется как обычный Java-код.\n"
+                + "Новый fingerprint ключа подписи:\n" + fingerprint + "\n");
+        if (!previousFingerprint.isEmpty()) text.append("Прежний fingerprint:\n").append(previousFingerprint).append('\n');
+        text.append("\nПосле перезапуска JAR выполняется как обычный Java-код.\n"
                 + "До подтверждения ничего не записывается в mods/.\n\n");
         for (Change change : changes) {
             if (change.type() == Type.UNCHANGED) continue;

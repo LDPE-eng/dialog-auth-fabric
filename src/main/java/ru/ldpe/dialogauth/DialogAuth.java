@@ -21,6 +21,7 @@ public final class DialogAuth implements ModInitializer {
     private static boolean encryptedOffline;
     private static DialogAuthIdentity identity;
     private static String clientDownloadUrl = "";
+    private static String serverId = "";
     private static String clientKitPath = "client-kit";
     private static String clientModpackManifestUrl = "";
     private static String clientModpackServers = "";
@@ -39,6 +40,7 @@ public final class DialogAuth implements ModInitializer {
             companionAuthUi = config.authUi().equals("companion");
             encryptedOffline = (!onlineMode || microsoftAuth) && config.allowOfflineMode() && config.requireEncryptedAuth();
             clientDownloadUrl = config.clientDownloadUrl();
+            serverId = config.serverId();
             clientKitPath = config.clientKitPath();
             clientModpackManifestUrl = config.clientModpackManifestUrl();
             clientModpackServers = config.clientModpackServers();
@@ -156,6 +158,7 @@ public final class DialogAuth implements ModInitializer {
     public static boolean isCompanionAuthUi() { return companionAuthUi; }
     public static boolean companionRequired() { return encryptedOffline || companionAuthUi; }
     public static String clientDownloadUrl() { return clientDownloadUrl; }
+    public static String serverId() { return serverId; }
     public static DialogAuthIdentity identity() {
         if (identity == null) throw new IllegalStateException("Dialog Auth server identity is not initialized");
         return identity;
