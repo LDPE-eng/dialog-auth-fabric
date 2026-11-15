@@ -33,7 +33,7 @@ import ru.ldpe.dialogauth.mixin.ServerConfigurationNetworkHandlerAccessorMixin;
 
 public final class AuthTask implements ServerPlayerConfigurationTask {
     public static final Key KEY = new Key("dialogauth:auth");
-    public static final Identifier CLICK_EVENT_ID = Identifier.of("dialogauth", "submit");
+    public static final Identifier CLICK_EVENT_ID = DialogAuthPayloads.CLICK_EVENT_ID;
     private final GameProfile profile;
     private final ClientConnection connection;
     private final ServerConfigurationNetworkHandler handler;

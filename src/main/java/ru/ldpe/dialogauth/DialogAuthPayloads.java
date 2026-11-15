@@ -9,6 +9,7 @@ import net.minecraft.network.packet.CustomPayload;
 import net.minecraft.util.Identifier;
 
 public final class DialogAuthPayloads {
+    public static final Identifier CLICK_EVENT_ID = Identifier.of("dialogauth", "submit");
     private static final AtomicBoolean INITIALIZED = new AtomicBoolean();
 
     private DialogAuthPayloads() {}

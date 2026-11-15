@@ -4,6 +4,7 @@ import java.nio.file.Path;
 import java.util.concurrent.CompletableFuture;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.api.networking.v1.ServerConfigurationConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerConfigurationNetworking;
 import net.fabricmc.loader.api.FabricLoader;
 import org.slf4j.Logger;
@@ -63,6 +64,7 @@ public final class DialogAuth implements ModInitializer {
                         + "all players will be disconnected (fail closed)");
             }
         }
+        registerCompanionGate();
         registerNetworkHandlers();
         CompletableFuture<Void> loaded = new CompletableFuture<>();
         service.initialize(() -> {
@@ -114,6 +116,17 @@ public final class DialogAuth implements ModInitializer {
         } catch (Exception e) {
             LOGGER.error("Could not generate the Dialog Auth client kit", e);
         }
+    }
+
+    private static void registerCompanionGate() {
+        // Channel negotiation is complete here; Fabric queues registry sync later, during CONFIGURE.
+        ServerConfigurationConnectionEvents.BEFORE_CONFIGURE.register((handler, server) -> {
+            if (!offlineEncryptionRequired()) return;
+            var profile = ((ServerConfigurationNetworkHandlerAccessorMixin) handler).dialogauth$getProfile();
+            if (isMicrosoftProfile(profile)) return;
+            LOGGER.debug("Checking companion before registry sync for {}", profile.getName());
+            CompanionGate.check(handler);
+        });
     }
 
     private static void registerNetworkHandlers() {

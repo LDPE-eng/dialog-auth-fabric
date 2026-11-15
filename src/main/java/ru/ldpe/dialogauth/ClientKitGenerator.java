@@ -29,11 +29,10 @@ public final class ClientKitGenerator {
         ModContainer fabricApi = loader.getModContainer("fabric-api")
                 .orElseThrow(() -> new IllegalStateException("Fabric API mod container is not present"));
         String version = server.getMetadata().getVersion().getFriendlyString();
-        Path ownJar = productionJar(server, "Dialog Auth");
         Path fabricApiJar = productionJar(fabricApi, "Fabric API");
         try (InputStream companion = ClientKitGenerator.class.getResourceAsStream(COMPANION_RESOURCE)) {
             if (companion == null) throw new IOException("Missing embedded companion resource: " + COMPANION_RESOURCE);
-            generate(outputFile, version, ownJar, companion, fabricApiJar,
+            generate(outputFile, version, companion, fabricApiJar,
                     clientModpackManifestUrl, clientModpackServers);
         }
     }
@@ -53,24 +52,21 @@ public final class ClientKitGenerator {
         return null;
     }
 
-    public static void generate(Path outputFile, String version, Path ownJar, InputStream companion,
+    public static void generate(Path outputFile, String version, InputStream companion,
                                 Path fabricApiJar) throws IOException {
-        generate(outputFile, version, ownJar, companion, fabricApiJar, "", "");
+        generate(outputFile, version, companion, fabricApiJar, "", "");
     }
 
-    public static void generate(Path outputFile, String version, Path ownJar, InputStream companion,
+    public static void generate(Path outputFile, String version, InputStream companion,
                                 Path fabricApiJar, String clientModpackManifestUrl, String clientModpackServers)
             throws IOException {
         Path target = outputFile.toAbsolutePath();
         requireSafeToken(version, "version");
-        Path ownPath = ownJar.toAbsolutePath();
-        if (!Files.isRegularFile(ownPath)) throw new IOException("Server jar was not found: " + ownPath);
         String fabricApiName = fabricApiJar.toAbsolutePath().getFileName().toString();
         requireSafeJarName(fabricApiName, "Fabric API jar");
         if (!fabricApiName.startsWith("fabric-api-")) {
             throw new IOException("Fabric API jar must be named fabric-api-<version>.jar but was " + fabricApiName);
         }
-        String serverEntry = "dialog-auth-" + version + ".jar";
         String companionEntry = "dialog-auth-companion-" + version + ".jar";
         String manifestUrl = clientModpackManifestUrl == null ? "" : clientModpackManifestUrl.trim();
         String servers = clientModpackServers == null ? "" : clientModpackServers.trim();
@@ -84,10 +80,9 @@ public final class ClientKitGenerator {
                 PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------")));
         try {
             try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(temporary))) {
-                addFile(zip, "mods/" + serverEntry, ownPath);
                 addStream(zip, "mods/" + companionEntry, companion);
                 addFile(zip, "mods/" + fabricApiName, fabricApiJar);
-                addText(zip, "INSTALL.txt", installText(serverEntry, companionEntry, fabricApiName));
+                addText(zip, "INSTALL.txt", installText(companionEntry, fabricApiName));
                 if (includeModpackConfig) {
                     addText(zip, "config/dialogauth/modpack.properties",
                             "url=" + manifestUrl + "\nservers=" + servers + "\n");
@@ -131,24 +126,23 @@ public final class ClientKitGenerator {
         }
     }
 
-    private static String installText(String serverJar, String companionJar, String fabricApiJar) {
+    private static String installText(String companionJar, String fabricApiJar) {
         return """
                 Dialog Auth - клиентский набор для Prism Launcher
 
                 Установка:
-                1. Если у вас была версия 1.3.0, один раз удалите из папки mods экземпляра
-                   старые dialog-auth-1.3.0.jar и dialog-auth-companion-1.3.0.jar.
+                1. Один раз удалите из папки mods старые dialog-auth-1.3.0.jar,
+                   dialog-auth-companion-1.3.0.jar и серверный dialog-auth-1.5.0.jar, если они есть.
                 2. Откройте Prism Launcher.
                 3. Создайте экземпляр Minecraft 1.21.6 с Fabric Loader 0.17.3+ или откройте существующий.
                 4. Скопируйте в папку mods этого экземпляра файлы из папки mods архива:
                    - %s
                    - %s
-                   - %s
                 5. Если в архиве есть config/dialogauth/modpack.properties, скопируйте папку config в папку экземпляра — моды будут синхронизироваться автоматически.
                 6. Запустите экземпляр и подключитесь к серверу.
 
-                Companion-мод шифрует пароль перед отправкой на сервер.
+                Companion-мод работает без серверного мода и шифрует пароль перед отправкой на сервер.
                 В архиве нет серверных настроек, accounts.json и миров.
-                """.formatted(serverJar, companionJar, fabricApiJar);
+                """.formatted(companionJar, fabricApiJar);
     }
 }
