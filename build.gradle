@@ -77,13 +77,6 @@ tasks.register('verifyCompanionStandalone') {
         }
     }
 }
-tasks.named('jar') {
-    dependsOn remapCompanionJar
-    from(remapCompanionJar) {
-        into 'assets/dialogauth/client-kit'
-        rename { 'dialog-auth-companion.jar' }
-    }
-}
 tasks.named('build') { dependsOn verifyCompanionStandalone }
 test { useJUnitPlatform() }
 

@@ -129,8 +129,9 @@ public record DialogAuthConfig(boolean onlineMode, boolean allowOfflineMode, boo
         if (clientDistributionEnabled) {
             if (clientCompanionJar.isEmpty()) throw new IOException("client-companion-jar is required for client distribution");
             if (serverId.isEmpty()) throw new IOException("server-id is required for client distribution");
-            if (!clientModpackManifestUrl.isEmpty() && (modpackPrivateKey.isEmpty() || modpackPublicKey.isEmpty())) {
-                throw new IOException("modpack-private-key and modpack-public-key are required when a manifest URL is set");
+            if (clientKitPath.isEmpty()) throw new IOException("client-kit-path is required for client distribution");
+            if (modpackPrivateKey.isEmpty() || modpackPublicKey.isEmpty()) {
+                throw new IOException("modpack-private-key and modpack-public-key are required for client distribution");
             }
         }
     }

@@ -47,7 +47,7 @@ public final class DialogAuth implements ModInitializer {
         } catch (Exception e) {
             throw new IllegalStateException("Could not load Dialog Auth configuration", e);
         }
-        generateClientKit();
+        generateClientDistribution(config);
         AccountStore store = new AccountStore(configDirectory.resolve("accounts.json"));
         service = new AuthService(store, new RateLimiter(System::nanoTime, 16384), 2, 32,
                 exception -> LOGGER.error("Authentication storage failure", exception),
@@ -104,19 +104,15 @@ public final class DialogAuth implements ModInitializer {
                 config.onlineMode());
     }
 
-    private static void generateClientKit() {
-        if (clientKitPath.isBlank()) {
-            LOGGER.info("Dialog Auth client kit generation is disabled (client-kit-path is empty)");
+    private static void generateClientDistribution(DialogAuthConfig config) {
+        if (!config.clientDistributionEnabled()) {
+            LOGGER.info("Client distribution is disabled");
             return;
         }
         try {
-            Path directory = Path.of(clientKitPath);
-            if (!directory.isAbsolute()) directory = FabricLoader.getInstance().getGameDir().resolve(directory);
-            Path output = directory.resolve("dialog-auth-client.zip");
-            ClientKitGenerator.generateFromFabric(output, clientModpackManifestUrl, clientModpackServers);
-            LOGGER.info("Dialog Auth client kit written to {}", output);
+            ClientDistribution.generateFromFabric(config);
         } catch (Exception e) {
-            LOGGER.error("Could not generate the Dialog Auth client kit", e);
+            throw new IllegalStateException("Could not generate configured client distribution", e);
         }
     }
 
