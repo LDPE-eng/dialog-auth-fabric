@@ -76,4 +76,48 @@ class DialogAuthConfigTest {
         assertEquals("https://example.com/manifest.json", loaded.clientModpackManifestUrl());
         assertEquals("play.example.com, 192.0.2.1", loaded.clientModpackServers());
     }
+
+    @Test void distributionDefaultsAreSafeAndUiDefaultsToVanilla() throws Exception {
+        DialogAuthConfig loaded = DialogAuthConfig.load(directory.resolve("server.properties"), directory.resolve("config.properties"));
+        assertFalse(loaded.clientDistributionEnabled());
+        assertEquals("vanilla", loaded.authUi());
+        assertEquals(java.util.List.of("fabric-api", "dialogauth-companion"), loaded.clientRequiredMods());
+        assertTrue(loaded.clientOptionalMods().isEmpty());
+        assertEquals("", loaded.serverId());
+    }
+
+    @Test void companionUiDoesNotChangeDistributionOrEncryptionDefaults() throws Exception {
+        Path config = directory.resolve("config.properties");
+        Files.writeString(config, "auth-ui=companion\n");
+        DialogAuthConfig loaded = DialogAuthConfig.load(directory.resolve("server.properties"), config);
+        assertEquals("companion", loaded.authUi());
+        assertFalse(loaded.clientDistributionEnabled());
+        assertTrue(loaded.requireEncryptedAuth());
+    }
+
+    @Test void enabledDistributionRequiresExplicitCompanionServerIdAndSigningKeys() throws Exception {
+        Path config = directory.resolve("config.properties");
+        Files.writeString(config, "client-distribution-enabled=true\n");
+        assertThrows(IOException.class, () -> DialogAuthConfig.load(directory.resolve("server.properties"), config));
+        Files.writeString(config, "client-distribution-enabled=true\nclient-companion-jar=/srv/companion.jar\nserver-id=gang\n"
+                + "client-modpack-manifest-url=https://example.com/manifest.json\n");
+        assertThrows(IOException.class, () -> DialogAuthConfig.load(directory.resolve("server.properties"), config));
+        Files.writeString(config, "client-distribution-enabled=true\nclient-companion-jar=/srv/companion.jar\nserver-id=gang\n"
+                + "client-modpack-manifest-url=https://example.com/manifest.json\nmodpack-private-key=/srv/private.key\nmodpack-public-key=/srv/public.key\n");
+        DialogAuthConfig loaded = DialogAuthConfig.load(directory.resolve("server.properties"), config);
+        assertTrue(loaded.clientDistributionEnabled());
+        assertEquals("gang", loaded.serverId());
+    }
+
+    @Test void rejectsUnsafeUiModOverlapAndServerModInClientAllowlist() throws Exception {
+        Path config = directory.resolve("config.properties");
+        Files.writeString(config, "auth-ui=web\n");
+        assertThrows(IOException.class, () -> DialogAuthConfig.load(directory.resolve("server.properties"), config));
+        Files.writeString(config, "client-required-mods=dialogauth\n");
+        assertThrows(IOException.class, () -> DialogAuthConfig.load(directory.resolve("server.properties"), config));
+        Files.writeString(config, "client-required-mods=voicechat\nclient-optional-mods=voicechat\n");
+        assertThrows(IOException.class, () -> DialogAuthConfig.load(directory.resolve("server.properties"), config));
+        Files.writeString(config, "server-id=../../bad\n");
+        assertThrows(IOException.class, () -> DialogAuthConfig.load(directory.resolve("server.properties"), config));
+    }
 }

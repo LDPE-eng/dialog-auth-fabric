@@ -17,6 +17,7 @@ public final class DialogAuth implements ModInitializer {
     private static ResetApiServer resetApiServer;
     private static boolean onlineMode;
     private static boolean microsoftAuth;
+    private static boolean companionAuthUi;
     private static boolean encryptedOffline;
     private static DialogAuthIdentity identity;
     private static String clientDownloadUrl = "";
@@ -35,13 +36,14 @@ public final class DialogAuth implements ModInitializer {
                     configDirectory.resolve("config.properties"));
             onlineMode = config.onlineMode();
             microsoftAuth = onlineMode && config.microsoftAuth();
+            companionAuthUi = config.authUi().equals("companion");
             encryptedOffline = (!onlineMode || microsoftAuth) && config.allowOfflineMode() && config.requireEncryptedAuth();
             clientDownloadUrl = config.clientDownloadUrl();
             clientKitPath = config.clientKitPath();
             clientModpackManifestUrl = config.clientModpackManifestUrl();
             clientModpackServers = config.clientModpackServers();
             if (microsoftAuth) MicrosoftProfileVerifier.configure(config.microsoftProfileUrl());
-            if (encryptedOffline) identity = new DialogAuthIdentity(configDirectory);
+            if (encryptedOffline || companionAuthUi) identity = new DialogAuthIdentity(configDirectory);
         } catch (Exception e) {
             throw new IllegalStateException("Could not load Dialog Auth configuration", e);
         }
@@ -121,7 +123,7 @@ public final class DialogAuth implements ModInitializer {
     private static void registerCompanionGate() {
         // Channel negotiation is complete here; Fabric queues registry sync later, during CONFIGURE.
         ServerConfigurationConnectionEvents.BEFORE_CONFIGURE.register((handler, server) -> {
-            if (!offlineEncryptionRequired()) return;
+            if (!companionRequired()) return;
             var profile = ((ServerConfigurationNetworkHandlerAccessorMixin) handler).dialogauth$getProfile();
             if (isMicrosoftProfile(profile)) return;
             LOGGER.debug("Checking companion before registry sync for {}", profile.getName());
@@ -155,6 +157,8 @@ public final class DialogAuth implements ModInitializer {
         return microsoftAuth && !net.minecraft.util.Uuids.getOfflinePlayerProfile(profile.getName()).getId().equals(profile.getId());
     }
     public static boolean offlineEncryptionRequired() { return encryptedOffline; }
+    public static boolean isCompanionAuthUi() { return companionAuthUi; }
+    public static boolean companionRequired() { return encryptedOffline || companionAuthUi; }
     public static String clientDownloadUrl() { return clientDownloadUrl; }
     public static DialogAuthIdentity identity() {
         if (identity == null) throw new IllegalStateException("Dialog Auth server identity is not initialized");
