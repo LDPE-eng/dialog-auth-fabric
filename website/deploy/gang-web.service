@@ -9,7 +9,7 @@ Group=minecraft
 WorkingDirectory=/opt/gang-web
 Environment=PYTHONUNBUFFERED=1
 EnvironmentFile=/opt/gang-web/reset-token.conf
-ExecStart=/usr/bin/python3 /opt/gang-web/server.py --host 0.0.0.0 --port 8088 --static-dir /opt/gang-web/static
+ExecStart=/usr/bin/python3 /opt/gang-web/server.py --host 0.0.0.0 --port 8088 --static-dir /opt/gang-web/static --manifest-path /opt/modpack/client/manifest.json
 Restart=on-failure
 RestartSec=3
 NoNewPrivileges=true
