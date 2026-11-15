@@ -59,7 +59,38 @@ public final class ModpackSync {
             try {
                 var publicKey = trustStore.get(manifestUri, http);
                 var manifest = ModpackManifest.fetch(manifestUri, publicKey, http);
-                return ModpackInstaller.sync(manifest, manifestUri,
+                var plan = ModpackChangePlan.create(manifest, FabricLoader.getInstance().getGameDir().resolve("mods"),
+                        ru.ldpe.dialogauth.AuthCrypto.fingerprint(publicKey));
+                return new Prepared(manifest, plan);
+            } catch (Exception e) {
+                throw new ModpackFailure(e);
+            }
+        }).whenComplete((prepared, failure) -> client.execute(() -> {
+            if (failure != null) {
+                Throwable cause = failure instanceof ModpackFailure wrapper ? wrapper.getCause() : failure;
+                progress.status("Ошибка синхронизации: " + cause.getMessage());
+                DialogAuthClient.LOGGER.error("Modpack synchronization failed", cause);
+                return;
+            }
+            if (prepared.plan().isEmpty()) {
+                connectDirect(parent, client, address, info, quickPlay, cookieStorage);
+                return;
+            }
+            String serverId = prepared.manifest().serverId().isEmpty() ? info.address : prepared.manifest().serverId();
+            client.setScreen(new ModpackConfirmationScreen(parent, prepared.plan(), serverId, info.address,
+                    () -> install(parent, client, address, info, quickPlay, cookieStorage, prepared),
+                    () -> net.minecraft.client.gui.screen.ConfirmLinkScreen.open(parent, manifestUri.resolve("/"), false)));
+        }));
+    }
+
+    private static void install(Screen parent, MinecraftClient client, ServerAddress address, ServerInfo info,
+                                boolean quickPlay, CookieStorage cookieStorage, Prepared prepared) {
+        ModpackDownloadScreen progress = new ModpackDownloadScreen(parent);
+        progress.status("Скачиваем и проверяем выбранные моды…");
+        client.setScreen(progress);
+        CompletableFuture.supplyAsync(() -> {
+            try {
+                return ModpackInstaller.sync(prepared.manifest(), manifestUri,
                         FabricLoader.getInstance().getGameDir().resolve("mods"), http);
             } catch (Exception e) {
                 throw new ModpackFailure(e);
@@ -67,17 +98,17 @@ public final class ModpackSync {
         }).whenComplete((changed, failure) -> client.execute(() -> {
             if (failure != null) {
                 Throwable cause = failure instanceof ModpackFailure wrapper ? wrapper.getCause() : failure;
-                progress.status("Ошибка синхронизации: " + cause.getMessage());
-                DialogAuthClient.LOGGER.error("Modpack synchronization failed", cause);
-                return;
-            }
-            if (changed.isEmpty()) {
+                progress.status("Ошибка установки: " + cause.getMessage());
+                DialogAuthClient.LOGGER.error("Modpack installation failed", cause);
+            } else if (changed.isEmpty()) {
                 connectDirect(parent, client, address, info, quickPlay, cookieStorage);
             } else {
                 progress.restartRequired();
             }
         }));
     }
+
+    private record Prepared(ModpackManifest manifest, ModpackChangePlan plan) {}
 
     public static synchronized void connectDirect(Screen parent, MinecraftClient client, ServerAddress address,
                                                   ServerInfo info, boolean quickPlay, CookieStorage cookieStorage) {
