@@ -1,8 +1,8 @@
 plugins {
-    id 'fabric-loom' version '1.10.5'
+    id 'net.fabricmc.fabric-loom' version '1.16-SNAPSHOT'
     id 'maven-publish'
 }
-version = '1.5.2'
+version = '1.6.0'
 group = 'ru.ldpe'
 base { archivesName = 'dialog-auth' }
 repositories {
@@ -16,21 +16,19 @@ sourceSets {
     }
 }
 dependencies {
-    minecraft 'com.mojang:minecraft:1.21.6'
-    mappings 'net.fabricmc:yarn:1.21.6+build.1:v2'
-    modImplementation 'net.fabricmc:fabric-loader:0.17.3'
-    modImplementation 'net.fabricmc.fabric-api:fabric-api:0.128.2+1.21.6'
+    minecraft 'com.mojang:minecraft:26.1.2'
+    implementation 'net.fabricmc:fabric-loader:0.20.1'
+    implementation 'net.fabricmc.fabric-api:fabric-api:0.155.3+26.1.2'
     testImplementation sourceSets.companion.output
     testImplementation platform('org.junit:junit-bom:5.12.2')
     testImplementation 'org.junit.jupiter:junit-jupiter'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
-loom { mixin { defaultRefmapName = 'dialog-auth-refmap.json' } }
 java {
-    toolchain { languageVersion = JavaLanguageVersion.of(21) }
+    toolchain { languageVersion = JavaLanguageVersion.of(25) }
     withSourcesJar()
 }
-tasks.withType(JavaCompile).configureEach { options.release = 21 }
+tasks.withType(JavaCompile).configureEach { options.release = 25 }
 processResources {
     inputs.property 'version', project.version
     filesMatching('fabric.mod.json') { expand version: project.version }
@@ -42,7 +40,7 @@ processCompanionResources {
 tasks.register('companionJar', Jar) {
     dependsOn companionClasses
     archiveBaseName = 'dialog-auth-companion'
-    archiveClassifier = 'dev'
+    archiveClassifier = ''
     from sourceSets.companion.output
     // Shared protocol classes make the companion independent of the server mod.
     from(sourceSets.main.output) {
@@ -51,16 +49,10 @@ tasks.register('companionJar', Jar) {
         include 'ru/ldpe/dialogauth/mixin/ClientConnectionAccessorMixin.class'
     }
 }
-tasks.register('remapCompanionJar', net.fabricmc.loom.task.RemapJarTask) {
-    dependsOn companionJar
-    archiveBaseName = 'dialog-auth-companion'
-    archiveClassifier = ''
-    inputFile = companionJar.archiveFile
-}
 tasks.register('verifyCompanionStandalone') {
-    dependsOn remapCompanionJar
+    dependsOn companionJar
     doLast {
-        File jarFile = remapCompanionJar.archiveFile.get().asFile
+        File jarFile = companionJar.archiveFile.get().asFile
         try (java.util.zip.ZipFile zip = new java.util.zip.ZipFile(jarFile)) {
             def metadataEntry = zip.getEntry('fabric.mod.json')
             assert metadataEntry != null: 'Companion has no fabric.mod.json'
@@ -81,7 +73,7 @@ tasks.named('build') { dependsOn verifyCompanionStandalone }
 test { useJUnitPlatform() }
 
 tasks.register('generateModpack') {
-    dependsOn build, remapCompanionJar
+    dependsOn build
     doLast {
         File output = layout.buildDirectory.dir('modpack').get().asFile
         output.mkdirs()
@@ -106,8 +98,8 @@ tasks.register('generateModpack') {
         File manifest = new File(output, 'manifest.json')
         manifest.text = groovy.json.JsonOutput.toJson([
                 formatVersion: 1,
-                minecraft: '1.21.6',
-                fabricLoader: '0.17.3',
+                minecraft: '26.1.2',
+                fabricLoader: '0.20.1',
                 mods: mods
         ])
     }

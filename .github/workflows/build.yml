@@ -13,18 +13,18 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '21'
+          java-version: '25'
       - name: Build and test
         run: ./gradlew --no-daemon clean build generateModpack
       - name: Upload server artifact
         uses: actions/upload-artifact@v4
         with:
-          name: dialog-auth-server-1.5.2-mc1.21.6
-          path: build/libs/dialog-auth-1.5.2.jar
+          name: dialog-auth-server-1.6.0-mc26.1.2
+          path: build/libs/dialog-auth-1.6.0.jar
           if-no-files-found: error
       - name: Upload companion artifact
         uses: actions/upload-artifact@v4
         with:
-          name: dialog-auth-companion-1.5.2-mc1.21.6
-          path: build/libs/dialog-auth-companion-1.5.2.jar
+          name: dialog-auth-companion-1.6.0-mc26.1.2
+          path: build/libs/dialog-auth-companion-1.6.0.jar
           if-no-files-found: error

@@ -12,12 +12,13 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import net.fabricmc.loader.api.FabricLoader;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.gui.screen.multiplayer.ConnectScreen;
-import net.minecraft.client.network.CookieStorage;
-import net.minecraft.client.network.ServerAddress;
-import net.minecraft.client.network.ServerInfo;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.ConfirmLinkScreen;
+import net.minecraft.client.gui.screens.ConnectScreen;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.multiplayer.ServerData;
+import net.minecraft.client.multiplayer.TransferState;
+import net.minecraft.client.multiplayer.resolver.ServerAddress;
 
 public final class ModpackSync {
     private static final Set<String> BYPASS = new HashSet<>();
@@ -56,13 +57,13 @@ public final class ModpackSync {
         }
     }
 
-    public static void connect(Screen parent, MinecraftClient client, ServerAddress address, ServerInfo info,
-                               boolean quickPlay, CookieStorage cookieStorage) {
+    public static void connect(Screen parent, Minecraft client, ServerAddress address, ServerData info,
+                               boolean quickPlay, TransferState transferState) {
         ModpackDownloadScreen progress = new ModpackDownloadScreen(parent);
         client.setScreen(progress);
         CompletableFuture.supplyAsync(() -> {
             try {
-                ServerProfileStore.ServerProfile initialProfile = profiles.findByAddress(info.address).orElseThrow();
+                ServerProfileStore.ServerProfile initialProfile = profiles.findByAddress(info.ip).orElseThrow();
                 URI uri = URI.create(initialProfile.manifestUrl());
                 ModpackTrustStore trust = new ModpackTrustStore(initialProfile.modpackKey(),
                         FabricLoader.getInstance().getConfigDir().resolve("dialogauth/modpack-public.key"));
@@ -70,7 +71,7 @@ public final class ModpackSync {
                 ModpackManifest manifest = ModpackManifest.fetch(uri, state.publicKey(), http);
                 ServerProfileStore.ServerProfile profile = initialProfile;
                 if (!manifest.serverId().isEmpty() && !manifest.serverId().equals(initialProfile.serverId())) {
-                    profile = profiles.ensure(manifest.serverId(), info.address, uri.toString());
+                    profile = profiles.ensure(manifest.serverId(), info.ip, uri.toString());
                     trust = new ModpackTrustStore(profile.modpackKey());
                     state = trust.inspect(uri, http);
                 }
@@ -87,18 +88,18 @@ public final class ModpackSync {
                 return;
             }
             if (prepared.plan().isEmpty() && !prepared.trustState().requiresConfirmation()) {
-                connectDirect(parent, client, address, info, quickPlay, cookieStorage);
+                connectDirect(parent, client, address, info, quickPlay, transferState);
                 return;
             }
-            String serverId = prepared.manifest().serverId().isEmpty() ? info.address : prepared.manifest().serverId();
-            client.setScreen(new ModpackConfirmationScreen(parent, prepared.plan(), serverId, info.address,
-                    () -> install(parent, client, address, info, quickPlay, cookieStorage, prepared),
-                    () -> net.minecraft.client.gui.screen.ConfirmLinkScreen.open(parent, prepared.manifestUri().resolve("/"), false)));
+            String serverId = prepared.manifest().serverId().isEmpty() ? info.ip : prepared.manifest().serverId();
+            client.setScreen(new ModpackConfirmationScreen(parent, prepared.plan(), serverId, info.ip,
+                    () -> install(parent, client, address, info, quickPlay, transferState, prepared),
+                    () -> ConfirmLinkScreen.confirmLinkNow(parent, prepared.manifestUri().resolve("/"), false)));
         }));
     }
 
-    private static void install(Screen parent, MinecraftClient client, ServerAddress address, ServerInfo info,
-                                boolean quickPlay, CookieStorage cookieStorage, Prepared prepared) {
+    private static void install(Screen parent, Minecraft client, ServerAddress address, ServerData info,
+                                boolean quickPlay, TransferState transferState, Prepared prepared) {
         ModpackDownloadScreen progress = new ModpackDownloadScreen(parent);
         progress.status("Скачиваем и проверяем выбранные моды…");
         client.setScreen(progress);
@@ -115,7 +116,7 @@ public final class ModpackSync {
             if (failure != null) {
                 showFailure(progress, "установки", failure);
             } else if (changed.isEmpty()) {
-                connectDirect(parent, client, address, info, quickPlay, cookieStorage);
+                connectDirect(parent, client, address, info, quickPlay, transferState);
             } else {
                 progress.restartRequired();
             }
@@ -131,10 +132,10 @@ public final class ModpackSync {
     private record Prepared(ModpackManifest manifest, ModpackChangePlan plan, URI manifestUri,
                             ModpackTrustStore trust, ModpackTrustStore.TrustState trustState) {}
 
-    public static synchronized void connectDirect(Screen parent, MinecraftClient client, ServerAddress address,
-                                                  ServerInfo info, boolean quickPlay, CookieStorage cookieStorage) {
-        BYPASS.add(info.address);
-        ConnectScreen.connect(parent, client, address, info, quickPlay, cookieStorage);
+    public static synchronized void connectDirect(Screen parent, Minecraft client, ServerAddress address,
+                                                  ServerData info, boolean quickPlay, TransferState transferState) {
+        BYPASS.add(info.ip);
+        ConnectScreen.startConnecting(parent, client, address, info, quickPlay, transferState);
     }
 
     private static final class ModpackFailure extends RuntimeException {

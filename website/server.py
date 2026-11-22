@@ -59,7 +59,7 @@ class Application:
                     return mod["version"], "/downloads/client/" + mod["url"]
         except (OSError, ValueError, KeyError, TypeError, AttributeError):
             pass
-        return "1.5.2", "/downloads/mods/dialog-auth-companion-1.5.2.jar"
+        return "1.6.0", "/downloads/mods/dialog-auth-companion-1.6.0.jar"
 
     def manual_report(self):
         if self.manifest_path is None:

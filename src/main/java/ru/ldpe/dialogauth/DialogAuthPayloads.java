@@ -3,89 +3,89 @@ package ru.ldpe.dialogauth;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
-import net.minecraft.network.PacketByteBuf;
-import net.minecraft.network.codec.PacketCodec;
-import net.minecraft.network.packet.CustomPayload;
-import net.minecraft.util.Identifier;
+import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.network.codec.StreamCodec;
+import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.resources.Identifier;
 
 public final class DialogAuthPayloads {
-    public static final Identifier CLICK_EVENT_ID = Identifier.of("dialogauth", "submit");
+    public static final Identifier CLICK_EVENT_ID = Identifier.fromNamespaceAndPath("dialogauth", "submit");
     private static final AtomicBoolean INITIALIZED = new AtomicBoolean();
 
     private DialogAuthPayloads() {}
 
     public static void initialize() {
         if (!INITIALIZED.compareAndSet(false, true)) return;
-        PayloadTypeRegistry.configurationS2C().register(ChallengePayload.ID, ChallengePayload.CODEC);
-        PayloadTypeRegistry.configurationS2C().register(AuthFormPayload.ID, AuthFormPayload.CODEC);
-        PayloadTypeRegistry.configurationS2C().register(ServerHelloPayload.ID, ServerHelloPayload.CODEC);
-        PayloadTypeRegistry.configurationC2S().register(ClientHelloPayload.ID, ClientHelloPayload.CODEC);
-        PayloadTypeRegistry.configurationC2S().register(ResponsePayload.ID, ResponsePayload.CODEC);
+        PayloadTypeRegistry.clientboundConfiguration().register(ChallengePayload.TYPE, ChallengePayload.CODEC);
+        PayloadTypeRegistry.clientboundConfiguration().register(AuthFormPayload.TYPE, AuthFormPayload.CODEC);
+        PayloadTypeRegistry.clientboundConfiguration().register(ServerHelloPayload.TYPE, ServerHelloPayload.CODEC);
+        PayloadTypeRegistry.serverboundConfiguration().register(ClientHelloPayload.TYPE, ClientHelloPayload.CODEC);
+        PayloadTypeRegistry.serverboundConfiguration().register(ResponsePayload.TYPE, ResponsePayload.CODEC);
     }
 
-    public record ChallengePayload(UUID sessionId, int protocolVersion, String serverId) implements CustomPayload {
+    public record ChallengePayload(UUID sessionId, int protocolVersion, String serverId) implements CustomPacketPayload {
         public static final int PROTOCOL_VERSION = 1;
-        public static final Id<ChallengePayload> ID = new Id<>(Identifier.of("dialogauth", "challenge"));
-        public static final PacketCodec<PacketByteBuf, ChallengePayload> CODEC = PacketCodec.of(ChallengePayload::write, ChallengePayload::new);
+        public static final Type<ChallengePayload> TYPE = new Type<>(Identifier.fromNamespaceAndPath("dialogauth", "challenge"));
+        public static final StreamCodec<FriendlyByteBuf, ChallengePayload> CODEC = StreamCodec.ofMember(ChallengePayload::write, ChallengePayload::new);
         public ChallengePayload(UUID sessionId) { this(sessionId, PROTOCOL_VERSION, ""); }
-        public ChallengePayload(PacketByteBuf buf) { this(buf.readUuid(), buf.readVarInt(), buf.readString(64)); }
-        private void write(PacketByteBuf buf) { buf.writeUuid(sessionId); buf.writeVarInt(protocolVersion); buf.writeString(serverId, 64); }
-        public Id<ChallengePayload> getId() { return ID; }
+        public ChallengePayload(FriendlyByteBuf buf) { this(buf.readUUID(), buf.readVarInt(), buf.readUtf(64)); }
+        private void write(FriendlyByteBuf buf) { buf.writeUUID(sessionId); buf.writeVarInt(protocolVersion); buf.writeUtf(serverId, 64); }
+        public Type<ChallengePayload> type() { return TYPE; }
     }
 
     public record AuthFormPayload(int protocolVersion, boolean registering, String error,
-                                  int minPasswordLength, int maxPasswordLength) implements CustomPayload {
-        public static final Id<AuthFormPayload> ID = new Id<>(Identifier.of("dialogauth", "auth_form"));
-        public static final PacketCodec<PacketByteBuf, AuthFormPayload> CODEC = PacketCodec.of(AuthFormPayload::write, AuthFormPayload::new);
-        public AuthFormPayload(PacketByteBuf buf) {
-            this(buf.readVarInt(), buf.readBoolean(), buf.readString(256), buf.readVarInt(), buf.readVarInt());
+                                  int minPasswordLength, int maxPasswordLength) implements CustomPacketPayload {
+        public static final Type<AuthFormPayload> TYPE = new Type<>(Identifier.fromNamespaceAndPath("dialogauth", "auth_form"));
+        public static final StreamCodec<FriendlyByteBuf, AuthFormPayload> CODEC = StreamCodec.ofMember(AuthFormPayload::write, AuthFormPayload::new);
+        public AuthFormPayload(FriendlyByteBuf buf) {
+            this(buf.readVarInt(), buf.readBoolean(), buf.readUtf(256), buf.readVarInt(), buf.readVarInt());
         }
-        private void write(PacketByteBuf buf) {
+        private void write(FriendlyByteBuf buf) {
             buf.writeVarInt(protocolVersion);
             buf.writeBoolean(registering);
-            buf.writeString(error, 256);
+            buf.writeUtf(error, 256);
             buf.writeVarInt(minPasswordLength);
             buf.writeVarInt(maxPasswordLength);
         }
-        public Id<AuthFormPayload> getId() { return ID; }
+        public Type<AuthFormPayload> type() { return TYPE; }
     }
 
-    public record ClientHelloPayload(UUID sessionId, byte[] nonce, byte[] publicKey) implements CustomPayload {
-        public static final Id<ClientHelloPayload> ID = new Id<>(Identifier.of("dialogauth", "client_hello"));
-        public static final PacketCodec<PacketByteBuf, ClientHelloPayload> CODEC = PacketCodec.of(ClientHelloPayload::write, ClientHelloPayload::new);
-        public ClientHelloPayload(PacketByteBuf buf) { this(buf.readUuid(), buf.readByteArray(), buf.readByteArray()); }
-        private void write(PacketByteBuf buf) { buf.writeUuid(sessionId); buf.writeByteArray(nonce); buf.writeByteArray(publicKey); }
-        public Id<ClientHelloPayload> getId() { return ID; }
+    public record ClientHelloPayload(UUID sessionId, byte[] nonce, byte[] publicKey) implements CustomPacketPayload {
+        public static final Type<ClientHelloPayload> TYPE = new Type<>(Identifier.fromNamespaceAndPath("dialogauth", "client_hello"));
+        public static final StreamCodec<FriendlyByteBuf, ClientHelloPayload> CODEC = StreamCodec.ofMember(ClientHelloPayload::write, ClientHelloPayload::new);
+        public ClientHelloPayload(FriendlyByteBuf buf) { this(buf.readUUID(), buf.readByteArray(), buf.readByteArray()); }
+        private void write(FriendlyByteBuf buf) { buf.writeUUID(sessionId); buf.writeByteArray(nonce); buf.writeByteArray(publicKey); }
+        public Type<ClientHelloPayload> type() { return TYPE; }
     }
 
     public record ServerHelloPayload(UUID sessionId, byte[] clientNonce, byte[] serverNonce, byte[] publicKey,
-                                     byte[] identityPublicKey, byte[] signature) implements CustomPayload {
-        public static final Id<ServerHelloPayload> ID = new Id<>(Identifier.of("dialogauth", "server_hello"));
-        public static final PacketCodec<PacketByteBuf, ServerHelloPayload> CODEC = PacketCodec.of(ServerHelloPayload::write, ServerHelloPayload::new);
-        public ServerHelloPayload(PacketByteBuf buf) {
-            this(buf.readUuid(), buf.readByteArray(), buf.readByteArray(), buf.readByteArray(), buf.readByteArray(), buf.readByteArray());
+                                     byte[] identityPublicKey, byte[] signature) implements CustomPacketPayload {
+        public static final Type<ServerHelloPayload> TYPE = new Type<>(Identifier.fromNamespaceAndPath("dialogauth", "server_hello"));
+        public static final StreamCodec<FriendlyByteBuf, ServerHelloPayload> CODEC = StreamCodec.ofMember(ServerHelloPayload::write, ServerHelloPayload::new);
+        public ServerHelloPayload(FriendlyByteBuf buf) {
+            this(buf.readUUID(), buf.readByteArray(), buf.readByteArray(), buf.readByteArray(), buf.readByteArray(), buf.readByteArray());
         }
-        private void write(PacketByteBuf buf) {
-            buf.writeUuid(sessionId);
+        private void write(FriendlyByteBuf buf) {
+            buf.writeUUID(sessionId);
             buf.writeByteArray(clientNonce);
             buf.writeByteArray(serverNonce);
             buf.writeByteArray(publicKey);
             buf.writeByteArray(identityPublicKey);
             buf.writeByteArray(signature);
         }
-        public Id<ServerHelloPayload> getId() { return ID; }
+        public Type<ServerHelloPayload> type() { return TYPE; }
     }
 
-    public record ResponsePayload(UUID sessionId, int sequence, byte[] nonce, byte[] ciphertext) implements CustomPayload {
-        public static final Id<ResponsePayload> ID = new Id<>(Identifier.of("dialogauth", "response"));
-        public static final PacketCodec<PacketByteBuf, ResponsePayload> CODEC = PacketCodec.of(ResponsePayload::write, ResponsePayload::new);
-        public ResponsePayload(PacketByteBuf buf) { this(buf.readUuid(), buf.readVarInt(), buf.readByteArray(), buf.readByteArray()); }
-        private void write(PacketByteBuf buf) {
-            buf.writeUuid(sessionId);
+    public record ResponsePayload(UUID sessionId, int sequence, byte[] nonce, byte[] ciphertext) implements CustomPacketPayload {
+        public static final Type<ResponsePayload> TYPE = new Type<>(Identifier.fromNamespaceAndPath("dialogauth", "response"));
+        public static final StreamCodec<FriendlyByteBuf, ResponsePayload> CODEC = StreamCodec.ofMember(ResponsePayload::write, ResponsePayload::new);
+        public ResponsePayload(FriendlyByteBuf buf) { this(buf.readUUID(), buf.readVarInt(), buf.readByteArray(), buf.readByteArray()); }
+        private void write(FriendlyByteBuf buf) {
+            buf.writeUUID(sessionId);
             buf.writeVarInt(sequence);
             buf.writeByteArray(nonce);
             buf.writeByteArray(ciphertext);
         }
-        public Id<ResponsePayload> getId() { return ID; }
+        public Type<ResponsePayload> type() { return TYPE; }
     }
 }

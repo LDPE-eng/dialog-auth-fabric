@@ -1,28 +1,29 @@
 package ru.ldpe.dialogauth.client;
 
 import net.fabricmc.fabric.api.client.networking.v1.ClientConfigurationNetworking;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.gui.widget.ButtonWidget;
-import net.minecraft.client.gui.widget.TextFieldWidget;
-import net.minecraft.nbt.NbtCompound;
-import net.minecraft.network.ClientConnection;
-import net.minecraft.text.Text;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.Connection;
+import net.minecraft.network.chat.Component;
 import ru.ldpe.dialogauth.DialogAuthPayloads;
 
 public final class CompanionAuthScreen extends Screen {
-    private final ClientConnection connection;
+    private final Connection connection;
     private final boolean registering;
     private int minLength;
     private int maxLength;
     private String error;
     private boolean busy;
-    private TextFieldWidget password;
-    private TextFieldWidget confirmation;
-    private ButtonWidget submitButton;
+    private EditBox password;
+    private EditBox confirmation;
+    private Button submitButton;
 
-    private CompanionAuthScreen(ClientConnection connection, DialogAuthPayloads.AuthFormPayload payload) {
-        super(Text.literal(payload.registering() ? CompanionAuthStrings.REGISTER_TITLE : CompanionAuthStrings.LOGIN_TITLE));
+    private CompanionAuthScreen(Connection connection, DialogAuthPayloads.AuthFormPayload payload) {
+        super(Component.literal(payload.registering() ? CompanionAuthStrings.REGISTER_TITLE : CompanionAuthStrings.LOGIN_TITLE));
         this.connection = connection;
         this.registering = payload.registering();
         this.minLength = payload.minPasswordLength();
@@ -31,18 +32,18 @@ public final class CompanionAuthScreen extends Screen {
     }
 
     public static void initialize() {
-        ClientConfigurationNetworking.registerGlobalReceiver(DialogAuthPayloads.AuthFormPayload.ID, (payload, context) ->
+        ClientConfigurationNetworking.registerGlobalReceiver(DialogAuthPayloads.AuthFormPayload.TYPE, (payload, context) ->
                 context.client().execute(() -> open(context.client(),
-                        ((ru.ldpe.dialogauth.mixin.ClientCommonNetworkHandlerAccessorMixin) context.networkHandler())
+                        ((ru.ldpe.dialogauth.mixin.ClientCommonNetworkHandlerAccessorMixin) context.packetListener())
                                 .dialogauth$getConnection(), payload)));
     }
 
-    private static void open(MinecraftClient client, ClientConnection connection, DialogAuthPayloads.AuthFormPayload payload) {
+    private static void open(Minecraft client, Connection connection, DialogAuthPayloads.AuthFormPayload payload) {
         if (payload.protocolVersion() != DialogAuthPayloads.ChallengePayload.PROTOCOL_VERSION) {
-            connection.disconnect(Text.literal("Неподдерживаемая версия Dialog Auth UI."));
+            connection.disconnect(Component.literal("Неподдерживаемая версия Dialog Auth UI."));
             return;
         }
-        if (client.currentScreen instanceof CompanionAuthScreen screen && screen.connection == connection) {
+        if (client.screen instanceof CompanionAuthScreen screen && screen.connection == connection) {
             screen.error = payload.error();
             screen.busy = false;
             if (screen.submitButton != null) screen.submitButton.active = true;
@@ -55,35 +56,33 @@ public final class CompanionAuthScreen extends Screen {
     protected void init() {
         int fieldWidth = Math.min(320, width - 40);
         int x = width / 2 - fieldWidth / 2;
-        password = new TextFieldWidget(textRenderer, x, 72, fieldWidth, 20, Text.literal(CompanionAuthStrings.PASSWORD));
+        password = new EditBox(font, x, 72, fieldWidth, 20, Component.literal(CompanionAuthStrings.PASSWORD));
         password.setMaxLength(maxLength);
         mask(password);
-        addDrawableChild(password);
+        addRenderableWidget(password);
         if (registering) {
-            confirmation = new TextFieldWidget(textRenderer, x, 116, fieldWidth, 20,
-                    Text.literal(CompanionAuthStrings.CONFIRM));
+            confirmation = new EditBox(font, x, 116, fieldWidth, 20, Component.literal(CompanionAuthStrings.CONFIRM));
             confirmation.setMaxLength(maxLength);
             mask(confirmation);
-            addDrawableChild(confirmation);
+            addRenderableWidget(confirmation);
         }
         int buttonY = registering ? 151 : 116;
-        submitButton = ButtonWidget.builder(Text.literal(registering ? CompanionAuthStrings.REGISTER : CompanionAuthStrings.LOGIN),
-                        button -> submit())
-                .dimensions(x, buttonY, fieldWidth / 2 - 4, 20).build();
-        addDrawableChild(submitButton);
-        addDrawableChild(ButtonWidget.builder(Text.literal(CompanionAuthStrings.CANCEL), button -> close())
-                .dimensions(x + fieldWidth / 2 + 4, buttonY, fieldWidth / 2 - 4, 20).build());
+        submitButton = Button.builder(Component.literal(registering ? CompanionAuthStrings.REGISTER : CompanionAuthStrings.LOGIN),
+                        button -> submit()).bounds(x, buttonY, fieldWidth / 2 - 4, 20).build();
+        addRenderableWidget(submitButton);
+        addRenderableWidget(Button.builder(Component.literal(CompanionAuthStrings.CANCEL), button -> onClose())
+                .bounds(x + fieldWidth / 2 + 4, buttonY, fieldWidth / 2 - 4, 20).build());
         setInitialFocus(password);
     }
 
-    private static void mask(TextFieldWidget field) {
-        field.setRenderTextProvider((value, position) -> Text.literal("•".repeat(value.length())).asOrderedText());
+    private static void mask(EditBox field) {
+        field.addFormatter((value, position) -> Component.literal("•".repeat(value.length())).getVisualOrderText());
     }
 
     private void submit() {
         if (busy) return;
-        String secret = password.getText();
-        String repeated = confirmation == null ? "" : confirmation.getText();
+        String secret = password.getValue();
+        String repeated = confirmation == null ? "" : confirmation.getValue();
         if (secret.length() < minLength || secret.length() > maxLength) {
             error = CompanionAuthStrings.LENGTH;
             return;
@@ -92,7 +91,7 @@ public final class CompanionAuthScreen extends Screen {
             error = CompanionAuthStrings.MISMATCH;
             return;
         }
-        NbtCompound response = new NbtCompound();
+        CompoundTag response = new CompoundTag();
         response.putString("password", secret);
         response.putString("password_confirm", repeated);
         if (!SecureClientHandler.encryptResponse(connection, response)) {
@@ -105,22 +104,17 @@ public final class CompanionAuthScreen extends Screen {
     }
 
     @Override
-    public void render(net.minecraft.client.gui.DrawContext context, int mouseX, int mouseY, float delta) {
-        super.render(context, mouseX, mouseY, delta);
-        context.drawCenteredTextWithShadow(textRenderer, title, width / 2, 20, 0xffffff);
-        context.drawCenteredTextWithShadow(textRenderer, CompanionAuthStrings.ENCRYPTED, width / 2, 43, 0x9fc6dd);
-        if (busy) context.drawCenteredTextWithShadow(textRenderer, CompanionAuthStrings.BUSY, width / 2, height - 35, 0x9fc6dd);
-        if (!error.isBlank()) context.drawWrappedTextWithShadow(textRenderer, Text.literal(error), width / 2 - 160,
+    public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float delta) {
+        super.extractRenderState(graphics, mouseX, mouseY, delta);
+        graphics.centeredText(font, title, width / 2, 20, 0xffffff);
+        graphics.centeredText(font, CompanionAuthStrings.ENCRYPTED, width / 2, 43, 0x9fc6dd);
+        if (busy) graphics.centeredText(font, CompanionAuthStrings.BUSY, width / 2, height - 35, 0x9fc6dd);
+        if (!error.isBlank()) graphics.textWithWordWrap(font, Component.literal(error), width / 2 - 160,
                 height - 58, 320, 0xff6666);
     }
 
     @Override
-    public void close() {
-        connection.disconnect(Text.literal(CompanionAuthStrings.CANCELLED));
-    }
-
+    public void onClose() { connection.disconnect(Component.literal(CompanionAuthStrings.CANCELLED)); }
     @Override
-    public boolean shouldPause() {
-        return false;
-    }
+    public boolean isPauseScreen() { return false; }
 }

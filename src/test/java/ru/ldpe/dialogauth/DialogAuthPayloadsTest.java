@@ -4,13 +4,13 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import io.netty.buffer.Unpooled;
 import java.util.UUID;
-import net.minecraft.network.PacketByteBuf;
+import net.minecraft.network.FriendlyByteBuf;
 import org.junit.jupiter.api.Test;
 
 class DialogAuthPayloadsTest {
     @Test void challengeCarriesVersionAndStableServerId() {
         UUID session = UUID.randomUUID();
-        PacketByteBuf buffer = new PacketByteBuf(Unpooled.buffer());
+        FriendlyByteBuf buffer = new FriendlyByteBuf(Unpooled.buffer());
         DialogAuthPayloads.ChallengePayload.CODEC.encode(buffer,
                 new DialogAuthPayloads.ChallengePayload(session, 1, "gang"));
         DialogAuthPayloads.ChallengePayload decoded = DialogAuthPayloads.ChallengePayload.CODEC.decode(buffer);
@@ -21,7 +21,7 @@ class DialogAuthPayloadsTest {
     }
 
     @Test void companionFormCarriesPolicyAndErrorButNoSecrets() {
-        PacketByteBuf buffer = new PacketByteBuf(Unpooled.buffer());
+        FriendlyByteBuf buffer = new FriendlyByteBuf(Unpooled.buffer());
         DialogAuthPayloads.AuthFormPayload.CODEC.encode(buffer,
                 new DialogAuthPayloads.AuthFormPayload(1, true, "Ошибка", 8, 128));
         DialogAuthPayloads.AuthFormPayload decoded = DialogAuthPayloads.AuthFormPayload.CODEC.decode(buffer);

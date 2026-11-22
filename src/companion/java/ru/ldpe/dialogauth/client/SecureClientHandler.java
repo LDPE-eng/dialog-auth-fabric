@@ -10,40 +10,41 @@ import java.util.concurrent.ConcurrentHashMap;
 import javax.crypto.SecretKey;
 import net.fabricmc.fabric.api.client.networking.v1.ClientConfigurationNetworking;
 import net.fabricmc.loader.api.FabricLoader;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.screen.ConfirmScreen;
-import net.minecraft.nbt.NbtCompound;
-import net.minecraft.network.ClientConnection;
-import net.minecraft.text.Text;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.ConfirmScreen;
+import net.minecraft.client.multiplayer.ClientCommonPacketListenerImpl;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.Connection;
+import net.minecraft.network.chat.Component;
 import ru.ldpe.dialogauth.AuthCrypto;
 import ru.ldpe.dialogauth.DialogAuthPayloads;
 import ru.ldpe.dialogauth.mixin.ClientCommonNetworkHandlerAccessorMixin;
 import ru.ldpe.dialogauth.mixin.ClientConnectionAccessorMixin;
 
 public final class SecureClientHandler {
-    private static final Map<ClientConnection, ClientSession> SESSIONS = new ConcurrentHashMap<>();
+    private static final Map<Connection, ClientSession> SESSIONS = new ConcurrentHashMap<>();
     private static ServerProfileStore profiles;
 
     private SecureClientHandler() {}
 
     public static void initialize(ServerProfileStore profileStore) {
         profiles = profileStore;
-        ClientConfigurationNetworking.registerGlobalReceiver(DialogAuthPayloads.ChallengePayload.ID,
-                (payload, context) -> challenge(connection(context.networkHandler()), payload));
-        ClientConfigurationNetworking.registerGlobalReceiver(DialogAuthPayloads.ServerHelloPayload.ID,
-                (payload, context) -> serverHello(context.client(), connection(context.networkHandler()), payload));
+        ClientConfigurationNetworking.registerGlobalReceiver(DialogAuthPayloads.ChallengePayload.TYPE,
+                (payload, context) -> challenge(connection(context.packetListener()), payload));
+        ClientConfigurationNetworking.registerGlobalReceiver(DialogAuthPayloads.ServerHelloPayload.TYPE,
+                (payload, context) -> serverHello(context.client(), connection(context.packetListener()), payload));
     }
 
-    private static ClientConnection connection(net.minecraft.client.network.ClientCommonNetworkHandler handler) {
+    private static Connection connection(ClientCommonPacketListenerImpl handler) {
         return ((ClientCommonNetworkHandlerAccessorMixin) handler).dialogauth$getConnection();
     }
 
-    private static void challenge(ClientConnection connection, DialogAuthPayloads.ChallengePayload payload) {
+    private static void challenge(Connection connection, DialogAuthPayloads.ChallengePayload payload) {
         try {
             if (payload.protocolVersion() != DialogAuthPayloads.ChallengePayload.PROTOCOL_VERSION) {
                 throw new GeneralSecurityException("Unsupported Dialog Auth protocol version");
             }
-            String address = connection.getAddress().toString().replaceFirst("^/", "");
+            String address = connection.getRemoteAddress().toString().replaceFirst("^/", "");
             ServerProfileStore.ServerProfile profile = payload.serverId().isBlank()
                     ? profiles.ensureLegacy(address, "") : profiles.ensure(payload.serverId(), address, "");
             Path legacy = FabricLoader.getInstance().getConfigDir().resolve("dialogauth/auth-server-public.key");
@@ -59,7 +60,7 @@ public final class SecureClientHandler {
         }
     }
 
-    private static void serverHello(MinecraftClient client, ClientConnection connection, DialogAuthPayloads.ServerHelloPayload payload) {
+    private static void serverHello(Minecraft client, Connection connection, DialogAuthPayloads.ServerHelloPayload payload) {
         ClientSession session = SESSIONS.get(connection);
         if (session == null || !session.sessionId.equals(payload.sessionId())
                 || !MessageDigest.isEqual(session.nonce, payload.clientNonce())) return;
@@ -71,7 +72,7 @@ public final class SecureClientHandler {
                 session.identityPrompt = true;
                 client.execute(() -> client.setScreen(new ConfirmScreen(accepted -> {
                     if (!accepted) {
-                        connection.disconnect(Text.literal("Изменение ключа Dialog Auth отклонено."));
+                        connection.disconnect(Component.literal("Изменение ключа Dialog Auth отклонено."));
                         return;
                     }
                     try {
@@ -81,8 +82,8 @@ public final class SecureClientHandler {
                     } catch (Exception e) {
                         fail(connection, e);
                     }
-                }, Text.literal("Dialog Auth — изменился ключ сервера"),
-                        Text.literal("Прежний fingerprint:\n" + change.oldFingerprint()
+                }, Component.literal("Dialog Auth — изменился ключ сервера"),
+                        Component.literal("Прежний fingerprint:\n" + change.oldFingerprint()
                                 + "\nНовый fingerprint:\n" + change.newFingerprint()
                                 + "\nПродолжить только если администратор подтвердил смену ключа."))));
                 return;
@@ -105,15 +106,15 @@ public final class SecureClientHandler {
                 payload.publicKey(), payload.identityPublicKey());
     }
 
-    public static boolean encryptResponse(ClientConnection connection, NbtCompound response) {
+    public static boolean encryptResponse(Connection connection, CompoundTag response) {
         ClientSession session = SESSIONS.get(connection);
         if (session == null) return false;
         try {
             if (session.aesKey == null) throw new GeneralSecurityException("Encrypted handshake is not complete");
             int sequence = session.sequence++;
-            String password = response.getString("password", "");
+            String password = response.getStringOr("password", "");
             var encrypted = AuthCrypto.encrypt(session.aesKey, session.sessionId, sequence,
-                    AuthCrypto.packSecrets(password, response.getString("password_confirm", "")));
+                    AuthCrypto.packSecrets(password, response.getStringOr("password_confirm", "")));
             ClientConfigurationNetworking.send(new DialogAuthPayloads.ResponsePayload(
                     session.sessionId, sequence, encrypted.nonce(), encrypted.ciphertext()));
         } catch (Exception e) {
@@ -130,10 +131,10 @@ public final class SecureClientHandler {
         return java.security.KeyFactory.getInstance("Ed25519").generatePublic(new java.security.spec.X509EncodedKeySpec(encoded));
     }
 
-    private static void fail(ClientConnection connection, Exception error) {
+    private static void fail(Connection connection, Exception error) {
         SESSIONS.remove(connection);
         DialogAuthClient.LOGGER.error("Encrypted authentication failed", error);
-        connection.disconnect(Text.literal("Не удалось установить защищённое соединение Dialog Auth: " + error.getMessage()));
+        connection.disconnect(Component.literal("Не удалось установить защищённое соединение Dialog Auth: " + error.getMessage()));
     }
 
     private static final class ClientSession {

@@ -81,7 +81,7 @@ class WebsiteTest(unittest.TestCase):
         self.assertIn("/downloads/client/mods/custom-companion.jar", index)
         self.assertIn("Dialog Auth 9.9.9-test", index)
         self.assertNotIn("{{COMPANION_URL}}", index)
-        self.assertIn("Fabric Loader 0.17.3", index)
+        self.assertIn("Fabric Loader 0.20.1", index)
         self.assertIn("frame-ancestors 'none'", headers["Content-Security-Policy"])
         _, _, reset = self.get("/reset")
         self.assertNotIn("{{STATUS}}", reset)

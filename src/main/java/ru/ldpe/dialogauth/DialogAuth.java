@@ -1,18 +1,24 @@
 package ru.ldpe.dialogauth;
 
-import java.nio.file.Path;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.api.networking.v1.FabricServerConfigurationPacketListenerImpl;
 import net.fabricmc.fabric.api.networking.v1.ServerConfigurationConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerConfigurationNetworking;
 import net.fabricmc.loader.api.FabricLoader;
+import net.minecraft.core.UUIDUtil;
+import net.minecraft.server.network.ServerConfigurationPacketListenerImpl;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import ru.ldpe.dialogauth.mixin.ServerCommonNetworkHandlerAccessorMixin;
 import ru.ldpe.dialogauth.mixin.ServerConfigurationNetworkHandlerAccessorMixin;
 
 public final class DialogAuth implements ModInitializer {
     public static final Logger LOGGER = LoggerFactory.getLogger("DialogAuth");
+    private static final Map<ServerConfigurationPacketListenerImpl, AuthTask> AUTH_TASKS = new ConcurrentHashMap<>();
     private static AuthService service;
     private static ResetApiServer resetApiServer;
     private static boolean onlineMode;
@@ -22,9 +28,6 @@ public final class DialogAuth implements ModInitializer {
     private static DialogAuthIdentity identity;
     private static String clientDownloadUrl = "";
     private static String serverId = "";
-    private static String clientKitPath = "client-kit";
-    private static String clientModpackManifestUrl = "";
-    private static String clientModpackServers = "";
 
     @Override
     public void onInitialize() {
@@ -41,9 +44,6 @@ public final class DialogAuth implements ModInitializer {
             encryptedOffline = (!onlineMode || microsoftAuth) && config.allowOfflineMode() && config.requireEncryptedAuth();
             clientDownloadUrl = config.clientDownloadUrl();
             serverId = config.serverId();
-            clientKitPath = config.clientKitPath();
-            clientModpackManifestUrl = config.clientModpackManifestUrl();
-            clientModpackServers = config.clientModpackServers();
             if (microsoftAuth) MicrosoftProfileVerifier.configure(config.microsoftProfileUrl());
             if (encryptedOffline || companionAuthUi) identity = new DialogAuthIdentity(configDirectory);
         } catch (Exception e) {
@@ -54,9 +54,7 @@ public final class DialogAuth implements ModInitializer {
         service = new AuthService(store, new RateLimiter(System::nanoTime, 16384), 2, 32,
                 exception -> LOGGER.error("Authentication storage failure", exception),
                 onlineMode && !microsoftAuth, config.allowOfflineMode(), LOGGER::warn);
-        if (microsoftAuth) {
-            LOGGER.info("Hybrid authentication enabled: verified Microsoft profiles skip the password dialog");
-        }
+        if (microsoftAuth) LOGGER.info("Hybrid authentication enabled: verified Microsoft profiles skip the password dialog");
         if (!onlineMode || microsoftAuth) {
             if (encryptedOffline) {
                 LOGGER.warn("Offline authentication requires the companion mod and encrypted password responses");
@@ -64,11 +62,11 @@ public final class DialogAuth implements ModInitializer {
                 LOGGER.warn("Offline authentication is enabled without companion encryption: Microsoft does not verify usernames, "
                         + "an unregistered name can be claimed, and dialog passwords travel unencrypted");
             } else {
-                LOGGER.warn("Server is in offline mode, but Dialog Auth offline support is disabled; "
-                        + "all players will be disconnected (fail closed)");
+                LOGGER.warn("Server is in offline mode, but Dialog Auth offline support is disabled; all players will be disconnected (fail closed)");
             }
         }
         registerCompanionGate();
+        registerAuthTasks();
         registerNetworkHandlers();
         CompletableFuture<Void> loaded = new CompletableFuture<>();
         service.initialize(() -> {
@@ -119,40 +117,50 @@ public final class DialogAuth implements ModInitializer {
     }
 
     private static void registerCompanionGate() {
-        // Channel negotiation is complete here; Fabric queues registry sync later, during CONFIGURE.
         ServerConfigurationConnectionEvents.BEFORE_CONFIGURE.register((handler, server) -> {
             if (!companionRequired()) return;
             var profile = ((ServerConfigurationNetworkHandlerAccessorMixin) handler).dialogauth$getProfile();
             if (isMicrosoftProfile(profile)) return;
-            LOGGER.debug("Checking companion before registry sync for {}", profile.getName());
             CompanionGate.check(handler);
         });
     }
 
-    private static void registerNetworkHandlers() {
-        ServerConfigurationNetworking.registerGlobalReceiver(DialogAuthPayloads.ClientHelloPayload.ID, (payload, context) -> {
-            if (((ServerConfigurationNetworkHandlerAccessorMixin) context.networkHandler()).dialogauth$getCurrentTask()
-                    instanceof AuthTask task) {
-                task.handleClientHello(payload);
+    private static void registerAuthTasks() {
+        ServerConfigurationConnectionEvents.CONFIGURE.register((handler, server) -> {
+            var profile = ((ServerConfigurationNetworkHandlerAccessorMixin) handler).dialogauth$getProfile();
+            if (isMicrosoftProfile(profile)) {
+                LOGGER.info("Player {} passed vanilla Microsoft authentication; server password skipped", profile.name());
+                return;
             }
+            var connection = ((ServerCommonNetworkHandlerAccessorMixin) handler).dialogauth$getConnection();
+            AuthTask task = new AuthTask(profile, connection, handler);
+            AUTH_TASKS.put(handler, task);
+            ((FabricServerConfigurationPacketListenerImpl) handler).addTask(task);
         });
-        ServerConfigurationNetworking.registerGlobalReceiver(DialogAuthPayloads.ResponsePayload.ID, (payload, context) -> {
-            if (((ServerConfigurationNetworkHandlerAccessorMixin) context.networkHandler()).dialogauth$getCurrentTask()
-                    instanceof AuthTask task) {
-                task.handleEncryptedResponse(payload);
-            }
+        ServerConfigurationConnectionEvents.DISCONNECT.register((handler, server) -> AUTH_TASKS.remove(handler));
+    }
+
+    private static void registerNetworkHandlers() {
+        ServerConfigurationNetworking.registerGlobalReceiver(DialogAuthPayloads.ClientHelloPayload.TYPE, (payload, context) -> {
+            AuthTask task = authTask(context.packetListener());
+            if (task != null) task.handleClientHello(payload);
+        });
+        ServerConfigurationNetworking.registerGlobalReceiver(DialogAuthPayloads.ResponsePayload.TYPE, (payload, context) -> {
+            AuthTask task = authTask(context.packetListener());
+            if (task != null) task.handleEncryptedResponse(payload);
         });
     }
 
+    public static AuthTask authTask(ServerConfigurationPacketListenerImpl handler) { return AUTH_TASKS.get(handler); }
+    public static void completeAuthTask(ServerConfigurationPacketListenerImpl handler) { AUTH_TASKS.remove(handler); }
     public static AuthService service() {
         if (service == null) throw new IllegalStateException("Dialog Auth has not been initialized");
         return service;
     }
-
     public static boolean isOnlineMode() { return onlineMode; }
     public static boolean isMicrosoftAuthEnabled() { return microsoftAuth; }
     public static boolean isMicrosoftProfile(com.mojang.authlib.GameProfile profile) {
-        return microsoftAuth && !net.minecraft.util.Uuids.getOfflinePlayerProfile(profile.getName()).getId().equals(profile.getId());
+        return microsoftAuth && !UUIDUtil.createOfflinePlayerUUID(profile.name()).equals(profile.id());
     }
     public static boolean offlineEncryptionRequired() { return encryptedOffline; }
     public static boolean isCompanionAuthUi() { return companionAuthUi; }

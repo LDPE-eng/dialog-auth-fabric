@@ -1,11 +1,11 @@
 package ru.ldpe.dialogauth.mixin;
 
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.gui.screen.multiplayer.ConnectScreen;
-import net.minecraft.client.network.CookieStorage;
-import net.minecraft.client.network.ServerAddress;
-import net.minecraft.client.network.ServerInfo;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.ConnectScreen;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.multiplayer.ServerData;
+import net.minecraft.client.multiplayer.TransferState;
+import net.minecraft.client.multiplayer.resolver.ServerAddress;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -14,13 +14,13 @@ import ru.ldpe.dialogauth.client.ModpackSync;
 
 @Mixin(ConnectScreen.class)
 public abstract class ConnectScreenMixin {
-    @Inject(method = "connect", at = @At("HEAD"), cancellable = true)
-    private static void dialogauth$syncBeforeConnect(Screen screen, MinecraftClient client, ServerAddress address,
-                                                     ServerInfo info, boolean quickPlay, CookieStorage cookieStorage,
+    @Inject(method = "startConnecting", at = @At("HEAD"), cancellable = true)
+    private static void dialogauth$syncBeforeConnect(Screen screen, Minecraft client, ServerAddress address,
+                                                     ServerData info, boolean quickPlay, TransferState transferState,
                                                      CallbackInfo ci) {
-        if (ModpackSync.shouldIntercept(info.address)) {
+        if (ModpackSync.shouldIntercept(info.ip)) {
             ci.cancel();
-            ModpackSync.connect(screen, client, address, info, quickPlay, cookieStorage);
+            ModpackSync.connect(screen, client, address, info, quickPlay, transferState);
         }
     }
 }
