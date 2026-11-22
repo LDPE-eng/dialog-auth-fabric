@@ -21,7 +21,7 @@
 <main>
   <section class="hero">
     <div class="container">
-      <p class="eyebrow">Minecraft Java Edition 1.21.6</p>
+      <p class="eyebrow">Minecraft Java Edition 26.1.2</p>
       <h1>Играй на GANG</h1>
       <p class="lead">Готовый клиент с авторизацией, оптимизацией, голосовым чатом и остальными модами сервера.</p>
       <p class="server-address">Адрес сервера: <strong>gang.ldp-e.ru</strong></p>
@@ -31,14 +31,14 @@
     <section id="download" class="panel download-panel" aria-labelledby="download-title">
       <div class="panel-heading">
         <h2 id="download-title">Клиентский комплект</h2>
-        <span class="version">Dialog Auth 1.5.0</span>
+        <span class="version">Dialog Auth {{COMPANION_VERSION}}</span>
       </div>
-      <p>Архив содержит Dialog Auth, companion и Fabric API. После первого входа остальные моды скачаются автоматически.</p>
+      <p>Архив содержит моды из опубликованного ниже списка. Обязательные и опциональные элементы отмечены отдельно.</p>
       <div class="actions">
         <a class="button primary" href="/downloads/client/dialog-auth-client.zip">Скачать клиент ZIP</a>
-        <a class="button secondary" href="/downloads/mods/dialog-auth-companion-1.5.0.jar">Только companion</a>
+        <a class="button secondary" href="{{COMPANION_URL}}">Только companion</a>
       </div>
-      <p class="note">Требуется <strong>Fabric Loader 0.17.3</strong> или новее. Полный комплект рекомендуется вместо отдельного companion.</p>
+      <p class="note">Требуется <strong>Fabric Loader 0.20.1</strong> или новее. Полный комплект рекомендуется вместо отдельного companion.</p>
     </section>
     <aside class="panel" aria-labelledby="auth-title">
       <h2 id="auth-title">Два способа входа</h2>
@@ -57,7 +57,7 @@
     <section id="install" class="panel install-panel" aria-labelledby="install-title">
       <h2 id="install-title">Установка в Prism Launcher</h2>
       <ol class="steps">
-        <li><strong>Создайте экземпляр 1.21.6.</strong> Выберите Fabric Loader 0.17.3 или обновите его в настройках существующего экземпляра.</li>
+        <li><strong>Создайте экземпляр 26.1.2.</strong> Выберите Fabric Loader 0.20.1 или обновите его в настройках существующего экземпляра.</li>
         <li><strong>Скачайте ZIP.</strong> Откройте папку экземпляра Prism и распакуйте туда содержимое архива. Папки <code>mods</code> и <code>config</code> должны оказаться внутри экземпляра.</li>
         <li><strong>Перезапустите игру.</strong> При следующем подключении клиент скачает остальные моды. После синхронизации перезапустите игру ещё раз.</li>
         <li><strong>Подключитесь к <code>gang.ldp-e.ru</code>.</strong> Игрокам с Microsoft-аккаунтом дополнительный пароль не понадобится.</li>
@@ -65,7 +65,7 @@
     </section>
     <section class="panel install-panel" aria-labelledby="pojav-title">
       <h2 id="pojav-title">Установка в PojavLauncher</h2>
-      <p>Установите Fabric для Minecraft 1.21.6 и Loader 0.17.3+, затем распакуйте <code>mods/</code> и <code>config/</code> в папку выбранного экземпляра игры. Как и в Prism, после любого изменения модов нужен полный перезапуск.</p>
+      <p>Установите Fabric для Minecraft 26.1.2 и Loader 0.20.1+, затем распакуйте <code>mods/</code> и <code>config/</code> в папку выбранного экземпляра игры. Как и в Prism, после любого изменения модов нужен полный перезапуск.</p>
     </section>
     <section id="manual" class="panel install-panel" aria-labelledby="manual-title">
       <h2 id="manual-title">Ручная установка и проверка</h2>

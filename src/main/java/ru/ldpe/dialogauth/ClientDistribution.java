@@ -69,7 +69,7 @@ public final class ClientDistribution {
         }
         Path privateKey = configuredPath(gameDirectory, config.modpackPrivateKey());
         Path publicKey = configuredPath(gameDirectory, config.modpackPublicKey());
-        generate(new Request(output, config.serverId(), "1.21.6", "0.17.3", sources,
+        generate(new Request(output, config.serverId(), "26.1.2", "0.20.1", sources,
                 config.clientModpackManifestUrl(), config.clientModpackServers(), privateKey, publicKey));
         DialogAuth.LOGGER.info("Generated client distribution at {}", output);
     }
@@ -189,7 +189,7 @@ public final class ClientDistribution {
 
     private static String installText(List<ModEntry> entries) {
         StringBuilder text = new StringBuilder("Dialog Auth - универсальный клиентский набор\n\n"
-                + "1. Создайте экземпляр Minecraft 1.21.6 с Fabric Loader 0.17.3+.\n"
+                + "1. Создайте экземпляр Minecraft 26.1.2 с Fabric Loader 0.20.1+.\n"
                 + "2. Распакуйте mods/ и config/ в корень экземпляра Prism или Pojav.\n"
                 + "3. Полностью перезапустите игру после установки или обновления модов.\n\n"
                 + "Моды:\n");

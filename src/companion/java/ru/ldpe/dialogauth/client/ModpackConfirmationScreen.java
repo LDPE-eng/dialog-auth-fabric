@@ -1,10 +1,11 @@
 package ru.ldpe.dialogauth.client;
 
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.gui.widget.ButtonWidget;
-import net.minecraft.client.gui.widget.ScrollableTextWidget;
-import net.minecraft.text.Text;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.MultiLineEditBox;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.network.chat.Component;
 
 public final class ModpackConfirmationScreen extends Screen {
     private final Screen parent;
@@ -16,7 +17,7 @@ public final class ModpackConfirmationScreen extends Screen {
 
     public ModpackConfirmationScreen(Screen parent, ModpackChangePlan plan, String serverId, String address,
                                      Runnable install, Runnable manual) {
-        super(Text.literal("Dialog Auth — подтверждение сборки"));
+        super(Component.literal("Dialog Auth — подтверждение сборки"));
         this.parent = parent;
         this.plan = plan;
         this.serverId = serverId;
@@ -28,37 +29,34 @@ public final class ModpackConfirmationScreen extends Screen {
     @Override
     protected void init() {
         String report = plan.report(serverId, address);
-        addDrawableChild(new ScrollableTextWidget(12, 38, width - 24, height - 112,
-                Text.literal(report), textRenderer));
+        MultiLineEditBox text = MultiLineEditBox.builder().setX(12).setY(38).setShowBackground(true)
+                .build(font, width - 24, height - 112, Component.literal(report));
+        text.setValue(report);
+        addRenderableWidget(text);
         int buttonWidth = Math.min(200, (width - 36) / 2);
         int left = width / 2 - buttonWidth - 6;
         int right = width / 2 + 6;
         int firstRow = height - 60;
         int secondRow = height - 32;
-        addDrawableChild(ButtonWidget.builder(Text.literal("Проверить и установить"), button -> install.run())
-                .dimensions(left, firstRow, buttonWidth, 20).build());
-        addDrawableChild(ButtonWidget.builder(Text.literal("Установить вручную"), button -> manual.run())
-                .dimensions(right, firstRow, buttonWidth, 20).build());
-        addDrawableChild(ButtonWidget.builder(Text.literal("Скопировать отчёт"), button ->
-                        MinecraftClient.getInstance().keyboard.setClipboard(report))
-                .dimensions(left, secondRow, buttonWidth, 20).build());
-        addDrawableChild(ButtonWidget.builder(Text.literal("Отмена"), button -> close())
-                .dimensions(right, secondRow, buttonWidth, 20).build());
+        addRenderableWidget(Button.builder(Component.literal("Проверить и установить"), button -> install.run())
+                .bounds(left, firstRow, buttonWidth, 20).build());
+        addRenderableWidget(Button.builder(Component.literal("Установить вручную"), button -> manual.run())
+                .bounds(right, firstRow, buttonWidth, 20).build());
+        addRenderableWidget(Button.builder(Component.literal("Скопировать отчёт"), button ->
+                        Minecraft.getInstance().keyboardHandler.setClipboard(report))
+                .bounds(left, secondRow, buttonWidth, 20).build());
+        addRenderableWidget(Button.builder(Component.literal("Отмена"), button -> onClose())
+                .bounds(right, secondRow, buttonWidth, 20).build());
     }
 
     @Override
-    public void render(net.minecraft.client.gui.DrawContext context, int mouseX, int mouseY, float delta) {
-        super.render(context, mouseX, mouseY, delta);
-        context.drawCenteredTextWithShadow(textRenderer, title, width / 2, 14, 0xffffff);
+    public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float delta) {
+        super.extractRenderState(graphics, mouseX, mouseY, delta);
+        graphics.centeredText(font, title, width / 2, 14, 0xffffff);
     }
 
     @Override
-    public void close() {
-        if (client != null) client.setScreen(parent);
-    }
-
+    public void onClose() { minecraft.setScreen(parent); }
     @Override
-    public boolean shouldPause() {
-        return false;
-    }
+    public boolean isPauseScreen() { return false; }
 }

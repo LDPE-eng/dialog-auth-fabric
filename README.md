@@ -1,8 +1,8 @@
 # Dialog Auth
 
-Server-side registration and login for Fabric Minecraft 1.21.6, with an optional standalone client companion for encrypted offline authentication and signed modpack synchronization.
+Server-side registration and login for Fabric Minecraft 26.1.2, with an optional standalone client companion for encrypted offline authentication and signed modpack synchronization.
 
-Version 1.5.2 includes an early companion gate before Fabric registry synchronization and a standalone universal companion. The feature/next-auth work adds explicit client-mod allowlists, signed ready/manual distributions, confirmation before any mods/ writes, per-server trust profiles and an optional custom companion authentication screen. Earlier releases added hybrid Microsoft/offline authentication, one-time-code password resets and the HTTPS website.
+Version 1.6.0 includes an early companion gate before Fabric registry synchronization and a standalone universal companion. The feature/next-auth work adds explicit client-mod allowlists, signed ready/manual distributions, confirmation before any mods/ writes, per-server trust profiles and an optional custom companion authentication screen. Earlier releases added hybrid Microsoft/offline authentication, one-time-code password resets and the HTTPS website.
 
 ## Features
 
@@ -27,15 +27,15 @@ Version 1.5.2 includes an early companion gate before Fabric registry synchroniz
 
 ## Requirements
 
-- Minecraft Java Edition 1.21.6
-- Fabric Loader 0.17.3 or newer
-- Fabric API 0.128.2+1.21.6 or newer
-- Java 21
+- Minecraft Java Edition 26.1.2
+- Fabric Loader 0.20.1 or newer
+- Fabric API 0.155.3+26.1.2 or newer
+- Java 25
 
 ## Artifacts
 
-- `dialog-auth-1.5.2.jar` — server mod; it does not embed or require a companion resource at runtime.
-- `dialog-auth-companion-1.5.2.jar` — standalone client-only companion built from `src/companion` plus the shared protocol/crypto/accessor classes it needs. It has no `dialogauth` dependency.
+- `dialog-auth-1.6.0.jar` — server mod; it does not embed or require a companion resource at runtime.
+- `dialog-auth-companion-1.6.0.jar` — standalone client-only companion built from `src/companion` plus the shared protocol/crypto/accessor classes it needs. It has no `dialogauth` dependency.
 - `dialog-auth-client.zip` — optional ready kit generated from the configured allowlist. It contains ready mod JARs, `INSTALL.txt`, `MANUAL-INSTALL.txt` and only the public per-server client profile. No server JAR, private keys, accounts, server config or worlds are included.
 - `manifest.json`, `manifest.sig`, `modpack-public.key` and `mods/` — signed distribution files for later synchronization.
 
@@ -85,7 +85,7 @@ Delete `dialog-auth-1.3.0.jar` and `dialog-auth-companion-1.3.0.jar` once before
 
 ### Upgrading from 1.5.0
 
-Delete the server-side `dialog-auth-1.5.0.jar` from the client instance's `mods/` directory. Version 1.5.0 incorrectly required it through companion metadata; 1.5.2 is self-contained and the client kit never includes the server JAR.
+Delete the server-side `dialog-auth-1.5.0.jar` from the client instance's `mods/` directory. Version 1.5.0 incorrectly required it through companion metadata; 1.6.0 is self-contained and the client kit never includes the server JAR.
 
 ## Configuration
 
@@ -96,8 +96,8 @@ allow-offline-mode=true
 require-encrypted-auth=true
 auth-ui=vanilla
 client-distribution-enabled=false
-client-companion-jar=/srv/shared/dialog-auth-companion-1.5.2.jar
-client-required-mods=fabric-api,trmt,cloth-config,dialogauth-companion
+client-companion-jar=/srv/shared/dialog-auth-companion-1.6.0.jar
+client-required-mods=fabric-api,trmt,friendlyenderman,dialogauth-companion
 client-optional-mods=voicechat
 server-id=gang
 client-kit-path=/opt/modpack/client

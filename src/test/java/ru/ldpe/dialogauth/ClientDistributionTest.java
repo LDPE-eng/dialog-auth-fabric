@@ -19,7 +19,7 @@ class ClientDistributionTest {
     @TempDir Path directory;
 
     @Test void generatesSignedAllowlistedKitAndManualReport() throws Exception {
-        Path companion = jar("dialogauth-companion", "1.5.2", "dialog-auth-companion-1.5.2.jar");
+        Path companion = jar("dialogauth-companion", "1.6.0", "dialog-auth-companion-1.6.0.jar");
         Path trmt = jar("trmt", "0.5.1", "trmt-0.5.1.jar");
         Path output = directory.resolve("public");
         Files.createDirectories(output.resolve("mods"));
@@ -38,6 +38,8 @@ class ClientDistributionTest {
         JsonObject manifest = JsonParser.parseString(Files.readString(output.resolve("manifest.json"))).getAsJsonObject();
         assertEquals(2, manifest.get("formatVersion").getAsInt());
         assertEquals("gang", manifest.get("serverId").getAsString());
+        assertEquals("26.1.2", manifest.get("minecraft").getAsString());
+        assertEquals("0.20.1", manifest.get("fabricLoader").getAsString());
         assertEquals(2, manifest.getAsJsonArray("mods").size());
         Signature verifier = Signature.getInstance("Ed25519");
         verifier.initVerify(java.security.KeyFactory.getInstance("Ed25519").generatePublic(
@@ -45,9 +47,9 @@ class ClientDistributionTest {
         verifier.update(Files.readAllBytes(output.resolve("manifest.json")));
         assertTrue(verifier.verify(Files.readAllBytes(output.resolve("manifest.sig"))));
         try (ZipFile zip = new ZipFile(output.resolve("dialog-auth-client.zip").toFile())) {
-            assertNotNull(zip.getEntry("mods/dialog-auth-companion-1.5.2.jar"));
+            assertNotNull(zip.getEntry("mods/dialog-auth-companion-1.6.0.jar"));
             assertNotNull(zip.getEntry("mods/trmt-0.5.1.jar"));
-            assertNull(zip.getEntry("mods/dialog-auth-1.5.2.jar"));
+            assertNull(zip.getEntry("mods/dialog-auth-1.6.0.jar"));
             assertNull(zip.getEntry("config/dialogauth/config.properties"));
             assertNotNull(zip.getEntry("config/dialogauth/servers/gang/server.properties"));
             String report = new String(zip.getInputStream(zip.getEntry("MANUAL-INSTALL.txt")).readAllBytes());
@@ -71,12 +73,12 @@ class ClientDistributionTest {
         assertThrows(Exception.class, () -> ClientDistribution.readMod(directory.resolve("missing.jar"), true));
         Path badName = jar("voicechat", "1.0", "bad name.jar");
         assertThrows(Exception.class, () -> ClientDistribution.readMod(badName, false));
-        Path server = jar("dialogauth", "1.5.2", "dialog-auth-1.5.2.jar");
+        Path server = jar("dialogauth", "1.6.0", "dialog-auth-1.6.0.jar");
         assertThrows(Exception.class, () -> ClientDistribution.generate(request(directory.resolve("server-mod"),
                 List.of(new ClientDistribution.ModSource(server, true)))));
-        Path companion = jar("dialogauth-companion", "1.5.2", "dialog-auth-companion-1.5.2.jar");
+        Path companion = jar("dialogauth-companion", "1.6.0", "dialog-auth-companion-1.6.0.jar");
         ClientDistribution.Request badId = new ClientDistribution.Request(directory.resolve("bad-id"), "../bad",
-                "1.21.6", "0.17.3", List.of(new ClientDistribution.ModSource(companion, true)), "", "",
+                "26.1.2", "0.20.1", List.of(new ClientDistribution.ModSource(companion, true)), "", "",
                 directory.resolve("private.key"), directory.resolve("public.key"));
         assertThrows(Exception.class, () -> ClientDistribution.generate(badId));
     }
@@ -85,7 +87,7 @@ class ClientDistributionTest {
         var keys = AuthCrypto.generateEd25519();
         Files.write(directory.resolve("private.key"), keys.getPrivate().getEncoded());
         Files.write(directory.resolve("public.key"), keys.getPublic().getEncoded());
-        return new ClientDistribution.Request(output, "gang", "1.21.6", "0.17.3", mods,
+        return new ClientDistribution.Request(output, "gang", "26.1.2", "0.20.1", mods,
                 "https://gang.example/manifest.json", "gang.example:25565",
                 directory.resolve("private.key"), directory.resolve("public.key"));
     }

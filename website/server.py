@@ -46,7 +46,20 @@ class Application:
         self.css = (self.static_dir / "style.css").read_bytes()
 
     def index_page(self):
-        return self.index.replace("{{MANUAL_REPORT}}", self.manual_report())
+        version, companion_url = self.companion_download()
+        return (self.index.replace("{{MANUAL_REPORT}}", self.manual_report())
+                .replace("{{COMPANION_VERSION}}", html.escape(version))
+                .replace("{{COMPANION_URL}}", html.escape(companion_url, quote=True)))
+
+    def companion_download(self):
+        try:
+            manifest = json.loads(self.manifest_path.read_text())
+            for mod in manifest["mods"]:
+                if mod.get("id") == "dialogauth-companion" and re.fullmatch(r"mods/[A-Za-z0-9][A-Za-z0-9._+-]*\.jar", mod["url"]):
+                    return mod["version"], "/downloads/client/" + mod["url"]
+        except (OSError, ValueError, KeyError, TypeError, AttributeError):
+            pass
+        return "1.6.0", "/downloads/mods/dialog-auth-companion-1.6.0.jar"
 
     def manual_report(self):
         if self.manifest_path is None:

@@ -40,6 +40,8 @@ class WebsiteTest(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory()
         manifest_path = Path(self.temporary.name) / "manifest.json"
         manifest_path.write_text(json.dumps({"formatVersion": 2, "serverId": "gang", "mods": [{
+            "id": "dialogauth-companion", "version": "9.9.9-test", "url": "mods/custom-companion.jar",
+            "file": "custom-companion.jar", "size": 100, "sha256": "b" * 64, "required": True}, {
             "id": "trmt", "version": "0.5.1", "file": "trmt-0.5.1.jar", "size": 123,
             "sha256": "a" * 64, "required": True, "homepage": "https://example.com/mod",
             "sources": "https://example.com/source"}]}))
@@ -76,8 +78,10 @@ class WebsiteTest(unittest.TestCase):
     def test_download_and_reset_pages(self):
         status, headers, index = self.get("/")
         self.assertEqual(status, 200)
-        self.assertIn("dialog-auth-companion-1.5.0.jar", index)
-        self.assertIn("Fabric Loader 0.17.3", index)
+        self.assertIn("/downloads/client/mods/custom-companion.jar", index)
+        self.assertIn("Dialog Auth 9.9.9-test", index)
+        self.assertNotIn("{{COMPANION_URL}}", index)
+        self.assertIn("Fabric Loader 0.20.1", index)
         self.assertIn("frame-ancestors 'none'", headers["Content-Security-Policy"])
         _, _, reset = self.get("/reset")
         self.assertNotIn("{{STATUS}}", reset)
